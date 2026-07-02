@@ -5,15 +5,18 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "migrate": "node src/config/migrate.js"
+    "migrate": "node src/config/migrate.js",
+    "seed": "node src/config/seed.js"
   },
   "dependencies": {
+    "@slack/web-api": "^7.18.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
     "node-cron": "^4.5.0",
     "nodemailer": "^9.0.1",
     "pg": "^8.11.3"

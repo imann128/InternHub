@@ -6,6 +6,7 @@ import Loader from '../components/common/Loader';
 import EmptyState from '../components/common/EmptyState';
 import taskService from '../services/taskService';
 import internService from '../services/internService';
+import submissionService from '../services/submissionService';
 import { toast } from 'react-toastify';
 import '../styles/tasks.css';
 
@@ -23,6 +24,10 @@ const Tasks = () => {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
+  const [submissionsTask, setSubmissionsTask] = useState(null);
+  const [taskSubmissions, setTaskSubmissions] = useState([]);
+  const [reviewData, setReviewData] = useState({ status: 'approved', score: '', feedback: '' });
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const fetchTasks = useCallback(() => {
     setLoading(true);
@@ -118,6 +123,29 @@ const Tasks = () => {
     finally { setCommentLoading(false); }
   };
 
+  const openSubmissions = async (task) => {
+    setSubmissionsTask(task);
+    try {
+      const res = await submissionService.getAll({ task_id: task.id });
+      setTaskSubmissions(res.data.data);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleReview = async (submissionId) => {
+    setReviewLoading(true);
+    try {
+      await submissionService.review(submissionId, {
+        status: reviewData.status,
+        score: reviewData.score ? parseInt(reviewData.score) : undefined,
+        feedback: reviewData.feedback,
+      });
+      toast.success('Review submitted');
+      const res = await submissionService.getAll({ task_id: submissionsTask.id });
+      setTaskSubmissions(res.data.data);
+    } catch (err) { toast.error(err.message); }
+    finally { setReviewLoading(false); }
+  };
+
   return (
     <MainLayout title="Tasks">
       <div className="page-header">
@@ -184,6 +212,7 @@ const Tasks = () => {
                       <button className="btn-edit" onClick={() => setEditTask(task)}>Edit</button>
                       <button className="btn-delete" onClick={() => setDeleteConfirm(task.id)}>Delete</button>
                       <button className="btn-view" onClick={() => openComments(task)}>Notes</button>
+                      <button className="btn-view" onClick={() => openSubmissions(task)}>Submissions</button>
                     </div>
                   </td>
                 </tr>
@@ -253,6 +282,60 @@ const Tasks = () => {
               {commentLoading ? '...' : 'Add'}
             </button>
           </div>
+        </Modal>
+      )}
+
+      {submissionsTask && (
+        <Modal title={`Submissions — ${submissionsTask.title}`} onClose={() => setSubmissionsTask(null)}>
+          {taskSubmissions.length === 0 ? (
+            <p style={{ color: 'var(--muted)', fontSize: 13 }}>No submissions yet</p>
+          ) : taskSubmissions.map(s => (
+            <div key={s.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>{s.intern_name}</span>
+                <span style={{
+                  fontSize: 12, padding: '2px 8px', borderRadius: 99, fontWeight: 500,
+                  background: s.status === 'approved' ? '#DCFCE7' : s.status === 'rejected' ? '#FEE2E2' : '#FEF9C3',
+                  color: s.status === 'approved' ? '#16A34A' : s.status === 'rejected' ? '#DC2626' : '#CA8A04'
+                }}>
+                  {s.status.replace('_', ' ')}
+                </span>
+              </div>
+              {s.notes && <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>{s.notes}</p>}
+              {s.files?.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  {s.files.map(f => (
+                    <button key={f.id} onClick={() => submissionService.download(s.id, f.id, f.file_name)}
+                      style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 12 }}>
+                      📎 {f.file_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {s.score != null && <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Score: {s.score}/100</p>}
+              {s.feedback && <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>{s.feedback}</p>}
+              {s.status === 'submitted' || s.status === 'revision_requested' ? (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <select className="form-input" style={{ flex: 1 }}
+                      value={reviewData.status} onChange={e => setReviewData(p => ({ ...p, status: e.target.value }))}>
+                      <option value="approved">Approve</option>
+                      <option value="rejected">Reject</option>
+                      <option value="revision_requested">Request Revision</option>
+                    </select>
+                    <input className="form-input" type="number" placeholder="Score /100" style={{ width: 100 }}
+                      value={reviewData.score} onChange={e => setReviewData(p => ({ ...p, score: e.target.value }))} />
+                  </div>
+                  <textarea className="form-input" rows={2} placeholder="Feedback (optional)"
+                    value={reviewData.feedback} onChange={e => setReviewData(p => ({ ...p, feedback: e.target.value }))}
+                    style={{ marginBottom: 8, resize: 'vertical' }} />
+                  <button className="btn-primary" onClick={() => handleReview(s.id)} disabled={reviewLoading}>
+                    {reviewLoading ? '...' : 'Submit Review'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ))}
         </Modal>
       )}
     </MainLayout>

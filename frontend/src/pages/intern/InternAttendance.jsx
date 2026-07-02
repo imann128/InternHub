@@ -14,6 +14,7 @@ const InternAttendance = () => {
   const { intern, logout } = useAuth();
   const navigate = useNavigate();
   const [attendance, setAttendance] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
   const [mode, setMode] = useState(null); // 'in' or 'out'
@@ -24,7 +25,10 @@ const InternAttendance = () => {
   const fetchData = () => {
     setLoading(true);
     api.get('/intern/me')
-      .then(res => setAttendance(res.data.data.attendance))
+      .then(res => {
+        setAttendance(res.data.data.attendance);
+        setProfile(res.data.data.intern);
+      })
       .catch(err => toast.error(err.message))
       .finally(() => setLoading(false));
   };
@@ -109,6 +113,16 @@ const InternAttendance = () => {
 
       <div className="intern-content" style={{ maxWidth: 900 }}>
         <h2 style={{ color: 'var(--text)', marginBottom: 16 }}>My Attendance</h2>
+
+        {profile && (
+          <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>
+            {profile.location_id
+              ? (profile.location_active
+                  ? <>Check-in location: <strong style={{ color: 'var(--text)' }}>{profile.location_name}</strong></>
+                  : <span style={{ color: '#DC2626' }}>Your assigned location ({profile.location_name}) is no longer active — contact your admin.</span>)
+              : <span style={{ color: '#DC2626' }}>No check-in location assigned yet — contact your admin before checking in.</span>}
+          </p>
+        )}
 
         <div className="intern-card" style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div>

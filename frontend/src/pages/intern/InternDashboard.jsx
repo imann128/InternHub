@@ -21,7 +21,7 @@ const InternNavbar = ({ name, onLogout, navigate }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
         <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 18 }}>IP</span>
         <nav style={{ display: 'flex', gap: 4 }}>
-          {[['Dashboard', '/intern/dashboard'], ['Tasks', '/intern/tasks'], ['Attendance', '/intern/attendance']].map(([label, path]) => (
+          {[['Dashboard', '/intern/dashboard'], ['Tasks', '/intern/tasks'], ['Attendance', '/intern/attendance'], ['Chat', '/intern/chat']].map(([label, path]) => (
             <button key={path} onClick={() => navigate(path)}
               className={`intern-nav-btn ${window.location.pathname === path ? 'active' : ''}`}>
               {label}

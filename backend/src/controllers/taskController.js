@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const TaskModel = require('../models/taskModel');
 const InternModel = require('../models/internModel');
+const slackService = require('../services/slackService');
 
 const getAll = async (req, res, next) => {
   try {
@@ -37,7 +38,15 @@ const create = async (req, res, next) => {
         task_description: task.description,
         task_priority: task.priority,
         task_due_date: task.due_date,
-      }).catch(() => {});
+      }).catch(() => { });
+      
+      await slackService.notifyTaskAssigned({
+        intern_name: intern.name,
+        task_title: task.title,
+        task_description: task.description,
+        priority: task.priority,
+        due_date: task.due_date,
+      }).catch(() => { });
       tasks.push(task);
     }
 
@@ -59,7 +68,7 @@ const updateStatus = async (req, res, next) => {
           intern_email: intern.email,
           task_title: task.title,
           task_due_date: task.due_date,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
     res.json({ success: true, data: task });
@@ -112,7 +121,7 @@ const addComment = async (req, res, next) => {
         intern_email: intern.email,
         task_title: task.title,
         comment: comment.trim(),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     res.status(201).json({ success: true, data: result.rows[0] });

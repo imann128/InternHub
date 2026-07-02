@@ -1,7 +1,3 @@
-const SINES_LAT = 33.646115;
-const SINES_LNG = 72.997455;
-const MAX_DISTANCE_METERS = 80;
-
 const toRad = (deg) => (deg * Math.PI) / 180;
 
 const haversineDistance = (lat1, lon1, lat2, lon2) => {
@@ -15,9 +11,11 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-const isWithinSines = (lat, lng) => {
-  const distance = haversineDistance(lat, lng, SINES_LAT, SINES_LNG);
-  return { valid: distance <= MAX_DISTANCE_METERS, distance: Math.round(distance) };
+// Generic replacement for the old hardcoded isWithinSines() — checks a given
+// lat/lng against ANY location row (id, name, latitude, longitude, radius_meters).
+const isWithinLocation = (lat, lng, location) => {
+  const distance = haversineDistance(lat, lng, location.latitude, location.longitude);
+  return { valid: distance <= location.radius_meters, distance: Math.round(distance) };
 };
 
-module.exports = { isWithinSines, SINES_LAT, SINES_LNG, MAX_DISTANCE_METERS };
+module.exports = { haversineDistance, isWithinLocation };

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import '../../styles/forms.css';
 
-const InternForm = ({ initial, onSubmit, submitting, onCancel, departments }) => {
+const InternForm = ({ initial, onSubmit, submitting, onCancel, departments, locations }) => {
   const [form, setForm] = useState({
     name: initial?.name || '',
     email: initial?.email || '',
     department: initial?.department || '',
     joining_date: initial?.joining_date?.slice(0, 10) || '',
+    location_id: initial?.location_id || '',
   });
   const [errors, setErrors] = useState({});
 
@@ -58,6 +59,19 @@ const InternForm = ({ initial, onSubmit, submitting, onCancel, departments }) =>
         <label className="form-label">Joining Date</label>
         <input className={`form-input ${errors.joining_date ? 'input-error' : ''}`} type="date" name="joining_date" value={form.joining_date} onChange={handleChange} />
         {errors.joining_date && <span className="form-error">{errors.joining_date}</span>}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Check-in Location</label>
+        <select className="form-input" name="location_id" value={form.location_id} onChange={handleChange}>
+          <option value="">No location assigned</option>
+          {(locations || []).filter(l => l.is_active || String(l.id) === String(form.location_id)).map(l => (
+            <option key={l.id} value={l.id}>{l.name}{!l.is_active ? ' (inactive)' : ''}</option>
+          ))}
+        </select>
+        <span className="form-hint" style={{ fontSize: 12, color: 'var(--muted)' }}>
+          Without a location assigned, this intern can't check in via the intern portal.
+        </span>
       </div>
 
       <div className="form-actions">

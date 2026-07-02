@@ -61,21 +61,22 @@ const InternModel = {
     return result.rows[0];
   },
 
-  create: async ({ name, email, department, joining_date }) => {
+  create: async ({ name, email, department, joining_date, location_id }) => {
     const bcrypt = require('bcryptjs');
     const tempPassword = Math.random().toString(36).slice(-8);
     const hashed = await bcrypt.hash(tempPassword, 12);
     const result = await pool.query(
-      'INSERT INTO interns (name, email, department, joining_date, password) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, hashed]
+      'INSERT INTO interns (name, email, department, joining_date, password, location_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, hashed, location_id || null]
     );
     return { ...result.rows[0], tempPassword };
   },
 
-  update: async (id, { name, email, department, joining_date, status }) => {
+  update: async (id, { name, email, department, joining_date, status, location_id }) => {
     const result = await pool.query(
-      'UPDATE interns SET name=$1, email=$2, department=$3, joining_date=$4, status=COALESCE($5,status) WHERE id=$6 RETURNING *',
-      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, status || null, id]
+      `UPDATE interns SET name=$1, email=$2, department=$3, joining_date=$4, status=COALESCE($5,status),
+       location_id=$6 WHERE id=$7 RETURNING *`,
+      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, status || null, location_id || null, id]
     );
     return result.rows[0];
   },

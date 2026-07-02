@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
 import EmptyState from '../components/common/EmptyState';
 import internService from '../services/internService';
+import locationService from '../services/locationService';
 import { toast } from 'react-toastify';
 import '../styles/interns.css';
 
@@ -32,6 +33,13 @@ const Interns = () => {
   const [deleteId, setDeleteId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [locations, setLocations] = useState([]);
+
+  useEffect(() => {
+    locationService.getAll()
+      .then(res => setLocations(res.data.data))
+      .catch(() => {}); // non-critical — form just shows "No location assigned" if this fails
+  }, []);
 
   const fetchInterns = useCallback(() => {
     setLoading(true);
@@ -128,6 +136,7 @@ const Interns = () => {
                 <th>Email</th>
                 <th>Department</th>
                 <th>Joining Date</th>
+                <th>Location</th>
                 <th>Actions</th>
                 <th>Status</th>
               </tr>
@@ -139,6 +148,11 @@ const Interns = () => {
                   <td><span className="text-muted">{intern.email}</span></td>
                   <td><span className="badge badge-muted">{intern.department}</span></td>
                   <td><span className="text-muted">{new Date(intern.joining_date).toLocaleDateString()}</span></td>
+                  <td>
+                    {intern.location_id
+                      ? <span className="badge badge-muted">{locations.find(l => l.id === intern.location_id)?.name || 'Unknown'}</span>
+                      : <span className="text-muted">—</span>}
+                  </td>
                   <td>
                     <div className="action-btns">
                       <button className="btn-view" onClick={() => navigate(`/interns/${intern.id}/profile`)}>View</button>
@@ -172,6 +186,7 @@ const Interns = () => {
             submitting={submitting}
             onCancel={closeModal}
             departments={DEPARTMENTS}
+            locations={locations}
           />
         </Modal>
       )}

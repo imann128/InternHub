@@ -1,4 +1,5 @@
 const InternModel = require('../models/internModel');
+const slackService = require('../services/slackService');
 
 const getAll = async (req, res, next) => {
   try {
@@ -30,6 +31,7 @@ const create = async (req, res, next) => {
       department: intern.department,
       tempPassword: intern.tempPassword,
     }).catch(() => {});
+    await slackService.notifyInternAdded(intern).catch(() => {});
     res.status(201).json({ success: true, data: intern });
   } catch (err) { next(err); }
 };

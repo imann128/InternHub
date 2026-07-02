@@ -77,6 +77,39 @@ const DashboardModel = {
       ORDER BY completed_tasks DESC
       LIMIT 5
     `);
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    const weekStartStr = weekStart.toISOString().slice(0, 10);
+    const weekEndStr = new Date().toISOString().slice(0, 10);
+
+    let internOfWeekRows = [];
+    try {
+      const internOfWeek = await pool.query(`
+    SELECT
+      i.id,
+      i.name,
+      i.department,
+      COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks,
+      COUNT(t.id) as total_tasks,
+      COALESCE(SUM(a.total_hours), 0) as weekly_hours,
+      ROUND(
+        (
+          COALESCE(COUNT(CASE WHEN t.status = 'completed' THEN 1 END)::float / 
+           NULLIF(COUNT(t.id), 0) * 60, 0)
+          +
+          LEAST(COALESCE(SUM(a.total_hours), 0) / 40.0, 1) * 40
+        )::numeric, 1
+      ) as score
+    FROM interns i
+    LEFT JOIN tasks t ON t.intern_id = i.id
+    LEFT JOIN attendance a ON a.intern_id = i.id
+    GROUP BY i.id, i.name, i.department
+    ORDER BY score DESC
+  `);
+      internOfWeekRows = internOfWeek.rows;
+    } catch (err) {
+      console.error('internOfWeek query error:', err.message);
+    }
 
     return {
       stats: result.rows[0],
@@ -84,6 +117,7 @@ const DashboardModel = {
       taskStatusDistribution: taskStatusResult.rows,
       recentActivity: recentActivity.rows,
       internPerformance: internPerformance.rows,
+      internOfWeek: internOfWeekRows,
     };
   },
 };

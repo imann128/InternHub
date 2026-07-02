@@ -93,6 +93,9 @@ const Login = () => {
         <p className="auth-footer">
           No account? <Link to="/signup" className="auth-link">Create one</Link>
         </p>
+        <p style={{ textAlign: 'center', marginTop: 10, color: 'var(--muted)', fontSize: 13 }}>
+          Intern? <a href="/intern/login" style={{ color: 'var(--primary)' }}>Login here</a>
+        </p>
       </div>
     </div>
   );
