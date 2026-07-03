@@ -184,7 +184,7 @@ const Tasks = () => {
             </thead>
             <tbody>
               {tasks.map(task => (
-                <tr key={task.id} style={isOverdue(task) ? { background: '#FEF2F2' } : {}}>
+                <tr key={task.id} style={isOverdue(task) ? { background: 'rgba(79, 70, 229, 0.15)' } : {}}>
                   <td><span className="intern-name">{task.title}</span></td>
                   <td><span className="text-muted">{task.intern_name}</span></td>
                   <td><span className="text-muted task-desc">{task.description || '—'}</span></td>

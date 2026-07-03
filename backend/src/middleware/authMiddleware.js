@@ -6,6 +6,15 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Belt-and-suspenders: any token without organization_id is stale/invalid
+    // for this rollout. Better to force re-login than let a scoped query run
+    // with organization_id = undefined (which would just error, but let's be
+    // explicit rather than rely on that).
+    if (!decoded.organization_id) {
+      return res.status(401).json({ success: false, message: 'Session expired, please log in again' });
+    }
+
     req.user = decoded;
     req.admin = decoded; // keep backward compat
     next();

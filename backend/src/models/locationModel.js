@@ -1,65 +1,81 @@
 const pool = require('../config/db');
 
 const LocationModel = {
-  // Admin management list — includes inactive locations so they can be reactivated.
-  getAll: async () => {
-    const result = await pool.query('SELECT * FROM locations ORDER BY name ASC');
-    return result.rows;
-  },
-
-  // Used for dropdowns (intern assignment, check-in lookups) — active only.
-  getAllActive: async () => {
-    const result = await pool.query('SELECT * FROM locations WHERE is_active = TRUE ORDER BY name ASC');
-    return result.rows;
-  },
-
-  getById: async (id) => {
-    const result = await pool.query('SELECT * FROM locations WHERE id = $1', [id]);
-    return result.rows[0];
-  },
-
-  create: async ({ name, latitude, longitude, radius_meters }) => {
+  getAll: async (organizationId) => {
     const result = await pool.query(
-      `INSERT INTO locations (name, latitude, longitude, radius_meters)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name.trim(), latitude, longitude, radius_meters || 80]
+      'SELECT * FROM locations WHERE organization_id = $1 ORDER BY name ASC',
+      [organizationId]
+    );
+    return result.rows;
+  },
+
+  getAllActive: async (organizationId) => {
+    const result = await pool.query(
+      'SELECT * FROM locations WHERE organization_id = $1 AND is_active = TRUE ORDER BY name ASC',
+      [organizationId]
+    );
+    return result.rows;
+  },
+
+  getById: async (organizationId, id) => {
+    const result = await pool.query(
+      'SELECT * FROM locations WHERE id = $1 AND organization_id = $2',
+      [id, organizationId]
     );
     return result.rows[0];
   },
 
-  update: async (id, { name, latitude, longitude, radius_meters }) => {
+  create: async (organizationId, { name, latitude, longitude, radius_meters }) => {
+    const result = await pool.query(
+      `INSERT INTO locations (name, latitude, longitude, radius_meters, organization_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [name.trim(), latitude, longitude, radius_meters || 80, organizationId]
+    );
+    return result.rows[0];
+  },
+
+  update: async (organizationId, id, { name, latitude, longitude, radius_meters }) => {
     const result = await pool.query(
       `UPDATE locations SET name=$1, latitude=$2, longitude=$3, radius_meters=$4
-       WHERE id=$5 RETURNING *`,
-      [name.trim(), latitude, longitude, radius_meters || 80, id]
+       WHERE id=$5 AND organization_id=$6 RETURNING *`,
+      [name.trim(), latitude, longitude, radius_meters || 80, id, organizationId]
     );
     return result.rows[0];
   },
 
-  setActive: async (id, isActive) => {
+  setActive: async (organizationId, id, isActive) => {
     const result = await pool.query(
-      'UPDATE locations SET is_active = $1 WHERE id = $2 RETURNING *',
-      [isActive, id]
+      'UPDATE locations SET is_active = $1 WHERE id = $2 AND organization_id = $3 RETURNING *',
+      [isActive, id, organizationId]
     );
     return result.rows[0];
   },
 
-  // Replaces the full set of interns assigned to this location in one atomic
-  // step: clears anyone currently pointing here who isn't in internIds, then
-  // assigns everyone in internIds. Lets the "Manage Interns" checkbox list
-  // on the admin page just send its current checked state every save.
-  assignInterns: async (locationId, internIds) => {
+  assignInterns: async (organizationId, locationId, internIds) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('UPDATE interns SET location_id = NULL WHERE location_id = $1', [locationId]);
+      // Confirm the location belongs to this org before touching anything.
+      const locCheck = await client.query(
+        'SELECT id FROM locations WHERE id = $1 AND organization_id = $2',
+        [locationId, organizationId]
+      );
+      if (!locCheck.rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      await client.query(
+        'UPDATE interns SET location_id = NULL WHERE location_id = $1 AND organization_id = $2',
+        [locationId, organizationId]
+      );
       if (internIds.length > 0) {
         await client.query(
-          'UPDATE interns SET location_id = $1 WHERE id = ANY($2::int[])',
-          [locationId, internIds]
+          'UPDATE interns SET location_id = $1 WHERE id = ANY($2::int[]) AND organization_id = $3',
+          [locationId, internIds, organizationId]
         );
       }
       await client.query('COMMIT');
+      return true;
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

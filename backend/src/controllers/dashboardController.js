@@ -2,7 +2,8 @@ const DashboardModel = require('../models/dashboardModel');
 
 const getStats = async (req, res, next) => {
   try {
-    const data = await DashboardModel.getStats();
+    const orgId = req.user.organization_id;
+    const data = await DashboardModel.getStats(orgId);
     res.json({ success: true, data });
   } catch (err) { next(err); }
 };

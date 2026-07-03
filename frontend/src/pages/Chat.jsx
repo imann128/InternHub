@@ -92,11 +92,11 @@ const Chat = () => {
   };
 
   const handleKeyDown = (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    handleSend(tab === 'announcements');
-  }
-};
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(tab === 'announcements');
+    }
+  };
 
   const handleDelete = async (id) => {
     try {
@@ -106,6 +106,24 @@ const Chat = () => {
       fetchConversations();
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  // Files are now served from an authenticated route, not a static path —
+  // fetch with the JWT attached, then open as a blob.
+  const handleFileOpen = async (fileUrl, fileName) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:5000${fileUrl}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to load file');
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+      toast.error('Could not open file');
     }
   };
 
@@ -119,9 +137,13 @@ const Chat = () => {
           {isAnnouncement && <div style={{ fontWeight: 600, marginBottom: 4 }}>📢 Announcement</div>}
           {msg.message && <div>{msg.message}</div>}
           {msg.file_url && (
-            <a href={`http://localhost:5000${msg.file_url}`} target="_blank" rel="noreferrer" className="chat-file-link">
+            <button
+              onClick={() => handleFileOpen(msg.file_url, msg.file_name)}
+              className="chat-file-link"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'inherit', textDecoration: 'underline', padding: 0 }}
+            >
               📎 {msg.file_name}
-            </a>
+            </button>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <span style={{ fontSize: 10, opacity: 0.7 }}>{formatTime(msg.created_at)}</span>

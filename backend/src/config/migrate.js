@@ -63,7 +63,7 @@ const migrate = async () => {
         task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
         intern_id INTEGER REFERENCES interns(id) ON DELETE CASCADE,
         notes TEXT,
-        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        status VARCHAR(20) DEFAULT 'submitted',
         score INTEGER,
         feedback TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -73,10 +73,11 @@ const migrate = async () => {
       CREATE TABLE IF NOT EXISTS submission_files (
         id SERIAL PRIMARY KEY,
         submission_id INTEGER REFERENCES submissions(id) ON DELETE CASCADE,
-        file_name VARCHAR(255) NOT NULL,
-        storage_key VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255),
+        storage_key VARCHAR(255),
         mime_type VARCHAR(100),
-        size INTEGER,
+        file_size INTEGER,
+        checksum_sha256 VARCHAR(64),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -113,8 +114,37 @@ const migrate = async () => {
       ALTER TABLE attendance ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
       ALTER TABLE attendance ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
       ALTER TABLE interns ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+      ALTER TABLE submission_files ADD COLUMN IF NOT EXISTS file_size INTEGER;
+      ALTER TABLE submission_files ADD COLUMN IF NOT EXISTS checksum_sha256 VARCHAR(64);
     `);
 
+    // Multi-tenant support: organizations table + nullable organization_id
+    // columns on every tenant-owned table. Nullable for now so this deploys
+    // safely against existing data. A one-off backfill script (not part of
+    // migrate.js) will set organization_id on all existing rows, then a
+    // later migrate.js change tightens these to NOT NULL.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        slack_bot_token VARCHAR(255),
+        slack_channel_id VARCHAR(100),
+        slack_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE interns ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE attendance ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE submissions ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE locations ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE submission_files ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+      ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+    `);
     console.log('Migration successful');
     process.exit(0);
   } catch (err) {

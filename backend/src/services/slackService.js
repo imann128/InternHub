@@ -3,11 +3,12 @@ const slackConfig = require('../config/slack');
 
 const client = slackConfig.enabled ? new WebClient(slackConfig.botToken) : null;
 
-const send = async (text, blocks) => {
+const send = async (organization, text, blocks) => {
   if (!client) return;
+  if (!organization?.slack_enabled) return;
   try {
     await client.chat.postMessage({
-      channel: slackConfig.defaultChannel,
+      channel: organization.slack_channel_id || slackConfig.defaultChannel,
       text,
       ...(blocks ? { blocks } : {}),
     });
@@ -17,8 +18,9 @@ const send = async (text, blocks) => {
 };
 
 const slackService = {
-  notifyInternAdded: async ({ name, email, department }) => {
+  notifyInternAdded: async (organization, { name, email, department }) => {
     await send(
+      organization,
       `👤 New intern added: ${name}`,
       [
         { type: 'header', text: { type: 'plain_text', text: '👤 New Intern Added' } },
@@ -34,12 +36,13 @@ const slackService = {
     );
   },
 
-  notifyTaskAssigned: async ({ intern_name, task_title, task_description, priority, due_date }) => {
+  notifyTaskAssigned: async (organization, { intern_name, task_title, task_description, priority, due_date }) => {
     const due = due_date
       ? new Date(due_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       : 'No deadline';
 
     await send(
+      organization,
       `📋 Task assigned to ${intern_name}: ${task_title}`,
       [
         { type: 'header', text: { type: 'plain_text', text: '📋 New Task Assigned' } },
@@ -59,8 +62,9 @@ const slackService = {
     );
   },
 
-  notifyAnnouncement: async ({ title, body }) => {
+  notifyAnnouncement: async (organization, { title, body }) => {
     await send(
+      organization,
       `📢 Announcement: ${title}`,
       [
         { type: 'header', text: { type: 'plain_text', text: `📢 ${title}` } },
@@ -69,8 +73,9 @@ const slackService = {
     );
   },
 
-  notifyCheckIn: async ({ intern_name, time, type }) => {
+  notifyCheckIn: async (organization, { intern_name, time, type }) => {
     await send(
+      organization,
       `${type === 'in' ? '🟢' : '🔴'} ${intern_name} checked ${type === 'in' ? 'in' : 'out'} at ${time}`,
       [
         {
@@ -84,8 +89,9 @@ const slackService = {
     );
   },
 
-  notifyTaskCompleted: async ({ intern_name, task_title }) => {
+  notifyTaskCompleted: async (organization, { intern_name, task_title }) => {
     await send(
+      organization,
       `✅ ${intern_name} completed: ${task_title}`,
       [
         {
@@ -99,12 +105,13 @@ const slackService = {
     );
   },
 
-  notifyWeeklyDigest: async ({ week_start, week_end, rows }) => {
+  notifyWeeklyDigest: async (organization, { week_start, week_end, rows }) => {
     const lines = rows.map(r =>
       `• *${r.intern_name}*: ${r.days_present} present | ${parseFloat(r.total_hours).toFixed(1)}h`
     ).join('\n');
 
     await send(
+      organization,
       `📊 Weekly Attendance Report (${week_start} → ${week_end})`,
       [
         { type: 'header', text: { type: 'plain_text', text: `📊 Weekly Report: ${week_start} → ${week_end}` } },
@@ -113,10 +120,11 @@ const slackService = {
     );
   },
 
-  notifyDeadlineAlert: async ({ intern_name, task_title, due_date, days_left }) => {
+  notifyDeadlineAlert: async (organization, { intern_name, task_title, due_date, days_left }) => {
     const urgency = days_left <= 1 ? '🚨' : '⚠️';
     const dueLabel = days_left === 0 ? 'today' : days_left === 1 ? 'tomorrow' : `in ${days_left} days`;
     await send(
+      organization,
       `${urgency} Deadline: ${task_title} due ${dueLabel}`,
       [
         {
@@ -130,8 +138,10 @@ const slackService = {
       ]
     );
   },
-  sendSubmissionCreated: async ({ id, task_title, intern_name, notes }) => {
+
+  sendSubmissionCreated: async (organization, { id, task_title, intern_name, notes }) => {
     await send(
+      organization,
       `📤 ${intern_name} submitted work for: ${task_title}`,
       [
         { type: 'header', text: { type: 'plain_text', text: '📤 Work Submitted' } },
@@ -147,9 +157,10 @@ const slackService = {
     );
   },
 
-  sendSubmissionReviewed: async ({ intern_name, task_title, status, score, feedback }) => {
+  sendSubmissionReviewed: async (organization, { intern_name, task_title, status, score, feedback }) => {
     const emoji = { approved: '✅', rejected: '❌', revision_requested: '🔄' }[status] || '📋';
     await send(
+      organization,
       `${emoji} Submission ${status.replace('_', ' ')}: ${task_title}`,
       [
         { type: 'header', text: { type: 'plain_text', text: `${emoji} Submission Reviewed` } },

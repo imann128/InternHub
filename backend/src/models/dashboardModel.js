@@ -1,26 +1,28 @@
 const pool = require('../config/db');
 
 const DashboardModel = {
-  getStats: async () => {
+  getStats: async (organizationId) => {
     const result = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM interns) AS total_interns,
-        (SELECT COUNT(*) FROM tasks) AS total_tasks,
-        (SELECT COUNT(*) FROM tasks WHERE status = 'completed') AS completed_tasks,
-        (SELECT COUNT(*) FROM tasks WHERE status = 'pending') AS pending_tasks
-    `);
+        (SELECT COUNT(*) FROM interns WHERE organization_id = $1) AS total_interns,
+        (SELECT COUNT(*) FROM tasks WHERE organization_id = $1) AS total_tasks,
+        (SELECT COUNT(*) FROM tasks WHERE status = 'completed' AND organization_id = $1) AS completed_tasks,
+        (SELECT COUNT(*) FROM tasks WHERE status = 'pending' AND organization_id = $1) AS pending_tasks
+    `, [organizationId]);
 
     const deptResult = await pool.query(`
       SELECT department, COUNT(*) as count 
       FROM interns 
+      WHERE organization_id = $1
       GROUP BY department
-    `);
+    `, [organizationId]);
 
     const taskStatusResult = await pool.query(`
       SELECT status, COUNT(*) as count 
       FROM tasks 
+      WHERE organization_id = $1
       GROUP BY status
-    `);
+    `, [organizationId]);
 
     const recentActivity = await pool.query(`
       (
@@ -31,6 +33,7 @@ const DashboardModel = {
           t.created_at as time
         FROM tasks t
         LEFT JOIN interns i ON t.intern_id = i.id
+        WHERE t.organization_id = $1
         ORDER BY t.created_at DESC
         LIMIT 5
       )
@@ -42,6 +45,7 @@ const DashboardModel = {
           name as intern_name,
           created_at as time
         FROM interns
+        WHERE organization_id = $1
         ORDER BY created_at DESC
         LIMIT 5
       )
@@ -54,12 +58,13 @@ const DashboardModel = {
           a.created_at as time
         FROM attendance a
         LEFT JOIN interns i ON a.intern_id = i.id
+        WHERE a.organization_id = $1
         ORDER BY a.created_at DESC
         LIMIT 5
       )
       ORDER BY time DESC
       LIMIT 8
-    `);
+    `, [organizationId]);
 
     const internPerformance = await pool.query(`
       SELECT
@@ -73,10 +78,12 @@ const DashboardModel = {
       FROM interns i
       LEFT JOIN tasks t ON t.intern_id = i.id
       LEFT JOIN attendance a ON a.intern_id = i.id
+      WHERE i.organization_id = $1
       GROUP BY i.id, i.name, i.department
       ORDER BY completed_tasks DESC
       LIMIT 5
-    `);
+    `, [organizationId]);
+
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
     const weekStartStr = weekStart.toISOString().slice(0, 10);
@@ -85,27 +92,28 @@ const DashboardModel = {
     let internOfWeekRows = [];
     try {
       const internOfWeek = await pool.query(`
-    SELECT
-      i.id,
-      i.name,
-      i.department,
-      COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks,
-      COUNT(t.id) as total_tasks,
-      COALESCE(SUM(a.total_hours), 0) as weekly_hours,
-      ROUND(
-        (
-          COALESCE(COUNT(CASE WHEN t.status = 'completed' THEN 1 END)::float / 
-           NULLIF(COUNT(t.id), 0) * 60, 0)
-          +
-          LEAST(COALESCE(SUM(a.total_hours), 0) / 40.0, 1) * 40
-        )::numeric, 1
-      ) as score
-    FROM interns i
-    LEFT JOIN tasks t ON t.intern_id = i.id
-    LEFT JOIN attendance a ON a.intern_id = i.id
-    GROUP BY i.id, i.name, i.department
-    ORDER BY score DESC
-  `);
+        SELECT
+          i.id,
+          i.name,
+          i.department,
+          COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks,
+          COUNT(t.id) as total_tasks,
+          COALESCE(SUM(a.total_hours), 0) as weekly_hours,
+          ROUND(
+            (
+              COALESCE(COUNT(CASE WHEN t.status = 'completed' THEN 1 END)::float / 
+               NULLIF(COUNT(t.id), 0) * 60, 0)
+              +
+              LEAST(COALESCE(SUM(a.total_hours), 0) / 40.0, 1) * 40
+            )::numeric, 1
+          ) as score
+        FROM interns i
+        LEFT JOIN tasks t ON t.intern_id = i.id
+        LEFT JOIN attendance a ON a.intern_id = i.id
+        WHERE i.organization_id = $1
+        GROUP BY i.id, i.name, i.department
+        ORDER BY score DESC
+      `, [organizationId]);
       internOfWeekRows = internOfWeek.rows;
     } catch (err) {
       console.error('internOfWeek query error:', err.message);

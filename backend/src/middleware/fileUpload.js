@@ -1,3 +1,4 @@
+// middleware/fileUpload.js
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -19,7 +20,12 @@ const ALLOWED_MIME = [
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  destination: (req, file, cb) => {
+    const orgId = req.user?.organization_id;
+    const dir = path.join(UPLOAD_DIR, String(orgId));
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
   filename: (req, file, cb) => {
     const rand = crypto.randomBytes(16).toString('hex');
     cb(null, `${Date.now()}-${rand}${path.extname(file.originalname)}`);

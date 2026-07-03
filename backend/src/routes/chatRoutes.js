@@ -4,6 +4,10 @@ const authMiddleware = require('../middleware/authMiddleware');
 const { internOnly } = require('../middleware/authMiddleware');
 const upload = require('../middleware/upload');
 
+// File download — must come before the /:intern_id/messages route so
+// "files" isn't matched as an intern_id.
+router.get('/files/:filename', ctrl.downloadFile);
+
 // Admin routes
 router.get('/conversations', ctrl.getAllConversations);
 router.get('/announcements', ctrl.getAnnouncements);

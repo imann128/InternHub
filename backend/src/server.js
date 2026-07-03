@@ -7,6 +7,7 @@ const authMiddleware = require('./middleware/authMiddleware');
 const cron = require('node-cron');
 const AttendanceModel = require('./models/attendanceModel');
 const AdminModel = require('./models/adminModel');
+const OrganizationModel = require('./models/organizationModel');
 const emailService = require('./services/emailService');
 const TaskModel = require('./models/taskModel');
 const InternModel = require('./models/internModel');
@@ -26,9 +27,7 @@ app.use('/api/attendance', authMiddleware, require('./routes/attendanceRoutes'))
 app.use('/api/dashboard', authMiddleware, require('./routes/dashboardRoutes'));
 
 app.use('/api/chat', authMiddleware, require('./routes/chatRoutes'));
-app.use('/chat-uploads', express.static(require('path').join(__dirname, '../chat-uploads')));
 app.use('/api/submissions', authMiddleware, require('./routes/submissionRoutes'));
-app.use('/uploads/submissions', express.static(require('path').join(__dirname, '../uploads/submissions')));
 app.use('/api/locations', authMiddleware, require('./routes/locationRoutes'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -43,7 +42,7 @@ app.get('/test-email', async (req, res) => {
     }
 });
 
-// Every Monday at 8:00 AM — send weekly attendance report
+// Every Monday at 8:00 AM — send weekly attendance report, per organization
 cron.schedule('0 8 * * 1', async () => {
     try {
         const now = new Date();
@@ -56,17 +55,20 @@ cron.schedule('0 8 * * 1', async () => {
         const week_start = lastMonday.toISOString().slice(0, 10);
         const week_end = lastSunday.toISOString().slice(0, 10);
 
-        const rows = await AttendanceModel.getWeeklySummary({ week_start, week_end });
-        const admins = await AdminModel.getAll();
+        const organizations = await OrganizationModel.getAll();
+        for (const org of organizations) {
+            const rows = await AttendanceModel.getWeeklySummary(org.id, {});
+            const admins = await AdminModel.getAll(org.id);
 
-        for (const admin of admins) {
-            await emailService.sendWeeklyReport({
-                admin_email: admin.email,
-                admin_name: admin.name,
-                week_start,
-                week_end,
-                rows,
-            }).catch(() => { });
+            for (const admin of admins) {
+                await emailService.sendWeeklyReport({
+                    admin_email: admin.email,
+                    admin_name: admin.name,
+                    week_start,
+                    week_end,
+                    rows,
+                }).catch(() => { });
+            }
         }
         console.log('Weekly report sent');
     } catch (err) {
@@ -74,6 +76,7 @@ cron.schedule('0 8 * * 1', async () => {
     }
 });
 
+// Weekly Slack digest, per organization
 cron.schedule('0 8 * * 1', async () => {
     try {
         const now = new Date();
@@ -84,36 +87,43 @@ cron.schedule('0 8 * * 1', async () => {
         lastSunday.setDate(lastMonday.getDate() + 6);
         const week_start = lastMonday.toISOString().slice(0, 10);
         const week_end = lastSunday.toISOString().slice(0, 10);
-        const rows = await AttendanceModel.getWeeklySummary({ week_start, week_end });
-        await slackService.notifyWeeklyDigest({ week_start, week_end, rows }).catch(() => { });
+
+        const organizations = await OrganizationModel.getAll();
+        for (const org of organizations) {
+            const rows = await AttendanceModel.getWeeklySummary(org.id, {});
+            await slackService.notifyWeeklyDigest(org, { week_start, week_end, rows }).catch(() => { });
+        }
     } catch (err) { console.error('Slack weekly digest error:', err.message); }
 });
 
-// Deadline alerts — every day at 9AM
+// Deadline alerts — every day at 9AM, per organization
 cron.schedule('0 9 * * *', async () => {
     try {
-        const result = await pool.query(`
-      SELECT t.id, t.title, t.due_date, i.name as intern_name
-      FROM tasks t
-      JOIN interns i ON t.intern_id = i.id
-      WHERE t.status = 'pending'
-        AND t.due_date IS NOT NULL
-        AND t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '3 days'
-    `);
-        for (const task of result.rows) {
-            const daysLeft = Math.ceil((new Date(task.due_date) - new Date()) / (1000 * 60 * 60 * 24));
-            await slackService.notifyDeadlineAlert({
-                intern_name: task.intern_name,
-                task_title: task.title,
-                due_date: task.due_date,
-                days_left: daysLeft,
-            }).catch(() => { });
+        const organizations = await OrganizationModel.getAll();
+        for (const org of organizations) {
+            const result = await pool.query(`
+              SELECT t.id, t.title, t.due_date, i.name as intern_name
+              FROM tasks t
+              JOIN interns i ON t.intern_id = i.id
+              WHERE t.status = 'pending'
+                AND t.due_date IS NOT NULL
+                AND t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '3 days'
+                AND t.organization_id = $1
+            `, [org.id]);
+            for (const task of result.rows) {
+                const daysLeft = Math.ceil((new Date(task.due_date) - new Date()) / (1000 * 60 * 60 * 24));
+                await slackService.notifyDeadlineAlert(org, {
+                    intern_name: task.intern_name,
+                    task_title: task.title,
+                    due_date: task.due_date,
+                    days_left: daysLeft,
+                }).catch(() => { });
+            }
         }
     } catch (err) { console.error('Deadline alert error:', err.message); }
 });
 
 app.use(errorHandler);
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
