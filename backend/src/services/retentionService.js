@@ -20,61 +20,84 @@ const cleanupSoftDeletedInternFiles = async () => {
   let filesRemoved = 0;
 
   for (const org of organizations) {
-    const { rows: interns } = await pool.query(
-      `SELECT id FROM interns
-       WHERE organization_id = $1 AND deleted_at IS NOT NULL
-         AND deleted_at < NOW() - make_interval(days => $2)`,
-      [org.id, retentionDays]
+    // This is a cron job, not an HTTP request -- there's no authMiddleware
+    // to check out a scoped DB client. `interns`, `submissions`,
+    // `submission_files`, and `chat_messages` all have Row-Level Security
+    // enabled (migrate.js), so every query below runs inside its own
+    // scoped client, pinned to this org, same as a real request would be.
+    // See config/db.js.
+    const client = await pool.getScopedClient(org.id);
+    try {
+      filesRemoved += await pool.runScoped(client, () => cleanupOrg(org.id, retentionDays));
+    } finally {
+      await pool.releaseScopedClient(client);
+    }
+  }
+
+  return filesRemoved;
+};
+
+// The actual per-organization cleanup, run inside the scoped client set up
+// by the loop above. Every `pool.query(...)` call here transparently uses
+// that scoped client (see config/db.js) -- no explicit client parameter
+// needed.
+const cleanupOrg = async (organizationId, retentionDays) => {
+  let filesRemoved = 0;
+
+  const { rows: interns } = await pool.query(
+    `SELECT id FROM interns
+     WHERE organization_id = $1 AND deleted_at IS NOT NULL
+       AND deleted_at < NOW() - make_interval(days => $2)`,
+    [organizationId, retentionDays]
+  );
+
+  for (const intern of interns) {
+    // --- Submission files ---
+    const { rows: files } = await pool.query(
+      `SELECT f.id, f.storage_key FROM submission_files f
+       JOIN submissions s ON s.id = f.submission_id
+       WHERE s.intern_id = $1 AND s.organization_id = $2`,
+      [intern.id, organizationId]
     );
+    for (const file of files) {
+      const safeName = String(file.storage_key || '').replace(/^\/+/, '');
+      const abs = path.resolve(UPLOAD_DIR, safeName);
+      // Same path-traversal guard used everywhere else this directory is
+      // touched (submissionController.downloadFile) -- storage_key is
+      // server-generated, not user input, but there's no cost to keeping
+      // the check consistent everywhere the directory is read from.
+      if (abs.startsWith(path.resolve(UPLOAD_DIR) + path.sep) && fs.existsSync(abs)) {
+        fs.unlinkSync(abs);
+        filesRemoved++;
+      }
+    }
+    if (files.length) {
+      await pool.query('DELETE FROM submission_files WHERE id = ANY($1::int[])', [files.map(f => f.id)]);
+    }
 
-    for (const intern of interns) {
-      // --- Submission files ---
-      const { rows: files } = await pool.query(
-        `SELECT f.id, f.storage_key FROM submission_files f
-         JOIN submissions s ON s.id = f.submission_id
-         WHERE s.intern_id = $1 AND s.organization_id = $2`,
-        [intern.id, org.id]
+    // --- Chat attachments ---
+    const { rows: messages } = await pool.query(
+      `SELECT id, file_url FROM chat_messages
+       WHERE intern_id = $1 AND organization_id = $2 AND file_url IS NOT NULL`,
+      [intern.id, organizationId]
+    );
+    for (const msg of messages) {
+      const filename = path.basename(msg.file_url);
+      const orgChatDir = path.join(CHAT_UPLOAD_DIR, String(organizationId));
+      const abs = path.resolve(orgChatDir, filename);
+      if (abs.startsWith(path.resolve(orgChatDir) + path.sep) && fs.existsSync(abs)) {
+        fs.unlinkSync(abs);
+        filesRemoved++;
+      }
+    }
+    if (messages.length) {
+      // Message text/timestamp survive -- only the attachment reference
+      // is stripped, matching the "keep the row, drop the file" policy
+      // used for submissions above.
+      await pool.query(
+        `UPDATE chat_messages SET file_url = NULL, file_name = NULL, file_type = NULL WHERE id = ANY($1::int[])`,
+        [messages.map(m => m.id)]
       );
-      for (const file of files) {
-        const safeName = String(file.storage_key || '').replace(/^\/+/, '');
-        const abs = path.resolve(UPLOAD_DIR, safeName);
-        // Same path-traversal guard used everywhere else this directory is
-        // touched (submissionController.downloadFile) -- storage_key is
-        // server-generated, not user input, but there's no cost to keeping
-        // the check consistent everywhere the directory is read from.
-        if (abs.startsWith(path.resolve(UPLOAD_DIR) + path.sep) && fs.existsSync(abs)) {
-          fs.unlinkSync(abs);
-          filesRemoved++;
-        }
-      }
-      if (files.length) {
-        await pool.query('DELETE FROM submission_files WHERE id = ANY($1::int[])', [files.map(f => f.id)]);
-      }
-
-      // --- Chat attachments ---
-      const { rows: messages } = await pool.query(
-        `SELECT id, file_url FROM chat_messages
-         WHERE intern_id = $1 AND organization_id = $2 AND file_url IS NOT NULL`,
-        [intern.id, org.id]
-      );
-      for (const msg of messages) {
-        const filename = path.basename(msg.file_url);
-        const orgChatDir = path.join(CHAT_UPLOAD_DIR, String(org.id));
-        const abs = path.resolve(orgChatDir, filename);
-        if (abs.startsWith(path.resolve(orgChatDir) + path.sep) && fs.existsSync(abs)) {
-          fs.unlinkSync(abs);
-          filesRemoved++;
-        }
-      }
-      if (messages.length) {
-        // Message text/timestamp survive -- only the attachment reference
-        // is stripped, matching the "keep the row, drop the file" policy
-        // used for submissions above.
-        await pool.query(
-          `UPDATE chat_messages SET file_url = NULL, file_name = NULL, file_type = NULL WHERE id = ANY($1::int[])`,
-          [messages.map(m => m.id)]
-        );
-      }
     }
   }
 

@@ -68,8 +68,18 @@ const LocationModel = {
   // Not version-checked — a set-membership operation across many intern
   // rows, not a single-row edit, so optimistic locking doesn't map cleanly
   // onto it the way it does for update()/setActive().
+  //
+  // Uses the current request's RLS-scoped client (see config/db.js) rather
+  // than pool.connect() -- `locations` and `interns` both have Row-Level
+  // Security enabled, and a freshly pool.connect()'d client has no
+  // app.current_org_id GUC set, which would make this transaction see zero
+  // rows for either table. This function is only ever called from an
+  // authenticated admin route, so a scoped client is always present; it is
+  // NOT released here -- it's the shared per-request client, released by
+  // authMiddleware once the response finishes, not owned by this call.
   assignInterns: async (organizationId, locationId, internIds) => {
-    const client = await pool.connect();
+    const client = pool.getCurrentClient();
+    if (!client) throw new Error('assignInterns requires an active request-scoped DB client');
     try {
       await client.query('BEGIN');
       // Confirm the location belongs to this org before touching anything.
@@ -96,8 +106,6 @@ const LocationModel = {
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
-    } finally {
-      client.release();
     }
   },
 };

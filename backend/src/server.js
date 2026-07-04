@@ -120,6 +120,20 @@ app.get('/test-email', async (req, res) => {
     }
 });
 
+// Cron jobs aren't behind authMiddleware (there's no HTTP request to hang a
+// scoped client off), but they still touch RLS-protected tables per
+// organization -- each per-org iteration below is wrapped in its own scoped
+// client so `pool.query(...)` inside AttendanceModel/etc. sees that org's
+// rows, same as it would during a real request. See config/db.js.
+const withOrgScope = async (organizationId, fn) => {
+    const client = await pool.getScopedClient(organizationId);
+    try {
+        return await pool.runScoped(client, fn);
+    } finally {
+        await pool.releaseScopedClient(client);
+    }
+};
+
 // Every Monday at 8:00 AM -- send weekly attendance report, per organization
 cron.schedule('0 8 * * 1', async () => {
     try {
@@ -135,18 +149,20 @@ cron.schedule('0 8 * * 1', async () => {
 
         const organizations = await OrganizationModel.getAll();
         for (const org of organizations) {
-            const rows = await AttendanceModel.getWeeklySummary(org.id, {});
-            const admins = await AdminModel.getAll(org.id);
+            await withOrgScope(org.id, async () => {
+                const rows = await AttendanceModel.getWeeklySummary(org.id, {});
+                const admins = await AdminModel.getAll(org.id);
 
-            for (const admin of admins) {
-                await emailService.sendWeeklyReport({
-                    admin_email: admin.email,
-                    admin_name: admin.name,
-                    week_start,
-                    week_end,
-                    rows,
-                }).catch(() => { });
-            }
+                for (const admin of admins) {
+                    await emailService.sendWeeklyReport({
+                        admin_email: admin.email,
+                        admin_name: admin.name,
+                        week_start,
+                        week_end,
+                        rows,
+                    }).catch(() => { });
+                }
+            });
         }
         console.log('Weekly report sent');
     } catch (err) {
@@ -168,8 +184,10 @@ cron.schedule('0 8 * * 1', async () => {
 
         const organizations = await OrganizationModel.getAll();
         for (const org of organizations) {
-            const rows = await AttendanceModel.getWeeklySummary(org.id, {});
-            await slackService.notifyWeeklyDigest(org, { week_start, week_end, rows }).catch(() => { });
+            await withOrgScope(org.id, async () => {
+                const rows = await AttendanceModel.getWeeklySummary(org.id, {});
+                await slackService.notifyWeeklyDigest(org, { week_start, week_end, rows }).catch(() => { });
+            });
         }
     } catch (err) { console.error('Slack weekly digest error:', err.message); }
 });
@@ -179,24 +197,26 @@ cron.schedule('0 9 * * *', async () => {
     try {
         const organizations = await OrganizationModel.getAll();
         for (const org of organizations) {
-            const result = await pool.query(`
-              SELECT t.id, t.title, t.due_date, i.name as intern_name
-              FROM tasks t
-              JOIN interns i ON t.intern_id = i.id
-              WHERE t.status = 'pending'
-                AND t.due_date IS NOT NULL
-                AND t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '3 days'
-                AND t.organization_id = $1
-            `, [org.id]);
-            for (const task of result.rows) {
-                const daysLeft = Math.ceil((new Date(task.due_date) - new Date()) / (1000 * 60 * 60 * 24));
-                await slackService.notifyDeadlineAlert(org, {
-                    intern_name: task.intern_name,
-                    task_title: task.title,
-                    due_date: task.due_date,
-                    days_left: daysLeft,
-                }).catch(() => { });
-            }
+            await withOrgScope(org.id, async () => {
+                const result = await pool.query(`
+                  SELECT t.id, t.title, t.due_date, i.name as intern_name
+                  FROM tasks t
+                  JOIN interns i ON t.intern_id = i.id
+                  WHERE t.status = 'pending'
+                    AND t.due_date IS NOT NULL
+                    AND t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '3 days'
+                    AND t.organization_id = $1
+                `, [org.id]);
+                for (const task of result.rows) {
+                    const daysLeft = Math.ceil((new Date(task.due_date) - new Date()) / (1000 * 60 * 60 * 24));
+                    await slackService.notifyDeadlineAlert(org, {
+                        intern_name: task.intern_name,
+                        task_title: task.title,
+                        due_date: task.due_date,
+                        days_left: daysLeft,
+                    }).catch(() => { });
+                }
+            });
         }
     } catch (err) { console.error('Deadline alert error:', err.message); }
 });

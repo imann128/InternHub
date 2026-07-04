@@ -123,16 +123,18 @@ const InternModel = {
 
   emailExists: async (email, excludeId = null) => {
     // Global check by design -- email is unique across all orgs, not per-org.
-    // Soft-deleted interns don't block reuse of their email (partial unique
-    // index in migrate.js), so this only looks at active rows.
-    let query = 'SELECT id FROM interns WHERE email = $1 AND deleted_at IS NULL';
-    const params = [email.trim().toLowerCase()];
-    if (excludeId) {
-      params.push(excludeId);
-      query += ` AND id != $2`;
-    }
-    const result = await pool.query(query, params);
-    return result.rows.length > 0;
+    // `interns` has Row-Level Security enabled (migrate.js) -- a plain
+    // SELECT here would only ever see the caller's own organization once
+    // the app connects as the restricted interns_app role, which defeats
+    // the point of a global uniqueness check. Goes through a SECURITY
+    // DEFINER function instead, which runs with the table owner's
+    // privileges (bypassing RLS) for this one legitimate cross-tenant
+    // check, and nothing else.
+    const result = await pool.query(
+      'SELECT intern_email_exists($1, $2) AS exists',
+      [email.trim().toLowerCase(), excludeId]
+    );
+    return result.rows[0].exists;
   },
 
   toggleStatus: async (organizationId, id) => {
@@ -145,8 +147,10 @@ const InternModel = {
   },
 
   findByEmail: async (email) => {
-    // Global lookup by design -- used at login before organization_id is known.
-    const result = await pool.query('SELECT * FROM interns WHERE email = $1 AND deleted_at IS NULL', [email.trim().toLowerCase()]);
+    // Global lookup by design -- used at login before organization_id is
+    // known. Same SECURITY DEFINER bypass as emailExists above, for the
+    // same reason -- see intern_find_by_email in migrate.js.
+    const result = await pool.query('SELECT * FROM intern_find_by_email($1)', [email.trim().toLowerCase()]);
     return result.rows[0];
   },
 

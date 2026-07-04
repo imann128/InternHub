@@ -24,6 +24,20 @@ Logging out blacklists the current access token's `jti` in the `token_blacklist`
 
 If a request references a resource ID that exists but belongs to a different organization (or a different intern's private data), the API returns 404. A 403 would confirm the resource exists somewhere — 404 gives no signal either way. This falls directly out of how [multi-tenant scoping](Multi-Tenancy-and-Organizations.md#how-every-query-stays-tenant-scoped) works: the query for "this ID in this organization" simply matches zero rows.
 
+## Row-Level Security (defense-in-depth)
+
+Everything above about tenant scoping — every model function requiring `organizationId`, every `WHERE` clause filtering on it — is enforced by *convention*: developers writing the filter correctly, reviewers catching it if they don't. That's a real guarantee, but it's an application-layer one. A future raw query, or a controller that forgets to pass the org ID through, would previously have had nothing stopping it from returning or modifying another organization's rows.
+
+`interns`, `tasks`, `attendance`, `submissions`, `submission_files`, `locations`, `chat_messages`, `task_comments`, and `audit_logs` now also have Postgres **Row-Level Security** enabled (`migrate.js`), with a policy on each requiring `organization_id` to match a per-connection session setting (`app.current_org_id`). This is a second, database-enforced layer: even a query that forgot its own `WHERE organization_id = ...` clause now gets filtered by Postgres itself before any row reaches the application.
+
+How a connection gets pinned to an organization, given the app uses a shared connection pool rather than one connection per tenant: `backend/src/config/db.js` uses Node's `AsyncLocalStorage` to carry a dedicated, GUC-scoped client through the entire async call chain of a request — `authMiddleware` checks one out per request (and cron jobs check one out per organization, once per loop iteration), and every existing `pool.query(...)` call anywhere beneath it transparently uses that same connection. No model file's function signature needed to change to pick this up.
+
+Two lookups are deliberately exempt: resolving which organization an email belongs to at login, and checking global email-uniqueness when creating an intern, both of which must search across every organization by design (see [Multi-Tenancy & Organizations](Multi-Tenancy-and-Organizations.md)). These run through `SECURITY DEFINER` Postgres functions (`intern_find_by_email`, `intern_email_exists`) that execute with the table owner's privileges rather than the caller's — a narrow, explicit bypass for exactly these two cases, not a general escape hatch.
+
+**Important caveat:** RLS policies never apply to a table's *owner*. This only provides real protection once the running server connects as a non-owner role — i.e., once DB role separation (above) has actually been adopted. If your server still connects as the same role that owns the tables (the default before following `role_separation.md`), Postgres silently skips every policy for that connection, and RLS is providing no protection at all even though it's "enabled." Adopting role separation is what makes this layer real, not optional decoration.
+
+`organizations` and `admins` are not RLS-protected in this pass — `organizations` is the tenant boundary itself (and several cron jobs legitimately loop across every organization), and `admins` is a known follow-up rather than a deliberate permanent exclusion.
+
 ## Optimistic locking
 
 `interns`, `tasks`, `submissions`, and `locations` each carry a `version` column, bumped automatically by a `BEFORE UPDATE` trigger. Every update statement requires `AND version = $N` in its `WHERE` clause. A mismatch (someone else edited the row first) means zero rows are affected, which the API treats as a 409 Conflict rather than silently discarding one admin's changes.

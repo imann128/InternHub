@@ -356,6 +356,142 @@ const migrate = async () => {
       CREATE INDEX IF NOT EXISTS task_comments_org_task_idx ON task_comments(organization_id, task_id);
     `);
 
+    // --- Row-Level Security. Everything above enforces tenant isolation at
+    // the application layer (every model function requires organizationId,
+    // every WHERE clause filters on it) -- this adds a second, database-
+    // enforced layer behind it. A query that forgot its org filter used to
+    // silently return/modify another organization's rows; with RLS enabled,
+    // Postgres itself refuses, regardless of what the application code does
+    // or doesn't check.
+    //
+    // How the app pins a session to one organization is in
+    // backend/src/config/db.js (AsyncLocalStorage-based scoped client, set
+    // per request by authMiddleware, and per organization inside the cron
+    // loops in server.js / retentionService.js).
+    //
+    // IMPORTANT: RLS never applies to a table's owner. This only provides
+    // real protection once the running server connects as a *non-owner*
+    // role (interns_app, via backend/docs/role_separation.md). If DB_USER
+    // still owns these tables, every policy below is silently skipped for
+    // that connection -- see wikis/Security.md.
+    //
+    // `organizations` itself is deliberately NOT included -- it's the
+    // tenant boundary, not tenant-owned data, and several cron jobs
+    // legitimately need to loop across every organization
+    // (OrganizationModel.getAll()). `admins` is also not included in this
+    // pass -- see wikis/Security.md for why, and as a known follow-up.
+    await pool.query(`
+      ALTER TABLE interns ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE submission_files ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+      -- CREATE POLICY has no IF NOT EXISTS in any Postgres version -- DROP
+      -- IF EXISTS first, same idempotency pattern already used for the
+      -- triggers above, so this migration stays safe to re-run.
+      DROP POLICY IF EXISTS org_isolation ON interns;
+      CREATE POLICY org_isolation ON interns
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON tasks;
+      CREATE POLICY org_isolation ON tasks
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON attendance;
+      CREATE POLICY org_isolation ON attendance
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON submissions;
+      CREATE POLICY org_isolation ON submissions
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON submission_files;
+      CREATE POLICY org_isolation ON submission_files
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON locations;
+      CREATE POLICY org_isolation ON locations
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON chat_messages;
+      CREATE POLICY org_isolation ON chat_messages
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON task_comments;
+      CREATE POLICY org_isolation ON task_comments
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+
+      DROP POLICY IF EXISTS org_isolation ON audit_logs;
+      CREATE POLICY org_isolation ON audit_logs
+        USING (organization_id = current_setting('app.current_org_id', true)::int)
+        WITH CHECK (organization_id = current_setting('app.current_org_id', true)::int);
+    `);
+
+    // Two legitimate exceptions to "every query is org-scoped": logging in
+    // resolves which organization an email belongs to by searching across
+    // ALL organizations (email is globally unique by design -- see
+    // wikis/Multi-Tenancy-and-Organizations.md), and checking whether an
+    // email is already taken must also see every organization, not just the
+    // caller's own. Both now run through a SECURITY DEFINER function, which
+    // executes with the *function owner's* privileges (interns_owner, who
+    // isn't subject to RLS as the table's owner) rather than the caller's --
+    // bypassing RLS for exactly these two narrow, pre-existing lookups, and
+    // nothing else. See InternModel.findByEmail / InternModel.emailExists.
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION intern_find_by_email(p_email text)
+      RETURNS SETOF interns
+      LANGUAGE sql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $BODY$
+        SELECT * FROM interns WHERE email = p_email AND deleted_at IS NULL;
+      $BODY$;
+
+      CREATE OR REPLACE FUNCTION intern_email_exists(p_email text, p_exclude_id integer)
+      RETURNS boolean
+      LANGUAGE sql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $BODY$
+        SELECT EXISTS (
+          SELECT 1 FROM interns
+          WHERE email = p_email AND deleted_at IS NULL
+            AND (p_exclude_id IS NULL OR id != p_exclude_id)
+        );
+      $BODY$;
+    `);
+
+    // Guarded separately from the CREATE FUNCTION block above: interns_app
+    // only exists once backend/docs/role_separation.md has been followed,
+    // which is a recommended-but-optional step -- this migration must stay
+    // safe to run without it. (Without that role, the app connects as
+    // whatever DB_USER already is, which -- per the RLS caveat above --
+    // means these functions' SECURITY DEFINER bypass isn't even needed yet,
+    // since RLS isn't actually restricting that connection either.)
+    await pool.query(`
+      DO $BODY$
+      BEGIN
+        IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'interns_app') THEN
+          GRANT EXECUTE ON FUNCTION intern_find_by_email(text) TO interns_app;
+          GRANT EXECUTE ON FUNCTION intern_email_exists(text, integer) TO interns_app;
+        END IF;
+      END
+      $BODY$;
+    `);
+
     console.log('Migration successful');
     process.exit(0);
   } catch (err) {
