@@ -1,49 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import Groq from 'groq-sdk';
 import { useAuth } from '../../context/AuthContext';
+import aiService from '../../services/aiService';
+import { CloseIcon, SparkleIcon } from './Icons';
 
-const groq = new Groq({
-  apiKey: process.env.REACT_APP_GROQ_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
-
-const ADMIN_SYSTEM = `You are a helpful assistant for the Intern Management Portal — an admin dashboard.
-You help the admin understand and use every feature of the portal. Be concise, friendly, and specific.
-
-Here is everything the admin can do:
-
-DASHBOARD: View total interns, tasks, completed/pending counts. See department distribution chart, task status chart, recent activity feed, and intern performance table.
-
-INTERNS: Add new interns (name, email, department, joining date). Edit or delete interns. View intern profile (tasks, attendance, progress). Search by name. Filter by department or status (active/inactive). Toggle intern active/inactive status. Click View to open full profile.
-
-INTERN PROFILE: Shows intern's stats, task completion progress bar, weekly hours progress, attendance rate, recent attendance records, and all assigned tasks.
-
-TASKS: Assign tasks to one or multiple interns at once. Each task has title, description, priority (low/medium/high), due date. AI can enhance task description using Groq. Filter tasks by status or priority. Mark task done or reopen. Edit task details. Delete task. Add notes/comments on a task — intern gets email notification. Overdue tasks are highlighted in red with ⚠.
-
-ATTENDANCE: Daily tab — mark interns present/absent, check in and check out with timestamps. Weekly tab — see total hours, days present/absent, 40hr target progress bar. Filter by date or intern. Export attendance to CSV.
-
-EMAILS: System sends emails automatically for — new intern welcome + login credentials, task assigned, task overdue, task comment/note, weekly attendance report every Monday 8AM.
-
-INTERN PORTAL: Interns log in at /intern/login using credentials emailed to them. They can view their dashboard, tasks (with supervisor notes), and attendance history. They can mark tasks as complete themselves.
-
-Always answer based on this portal. If asked something unrelated, politely redirect.`;
-
-const INTERN_SYSTEM = `You are a helpful assistant for the Intern Portal.
-You help interns understand and use their portal. Be friendly, encouraging, and concise.
-
-Here is everything an intern can do:
-
-LOGIN: Go to /intern/login. Use the email and password sent to you when you were added by your admin.
-
-DASHBOARD: See your total tasks, completed tasks, pending tasks, attendance rate, progress bars for task completion, weekly hours, and attendance. Also shows your 5 most recent tasks.
-
-TASKS: See all tasks assigned to you. Each task shows title, description, priority (color-coded), due date, status, and supervisor notes/comments. You can mark pending tasks as done by clicking Mark Done. Overdue tasks are highlighted with ⚠.
-
-ATTENDANCE: See your full attendance history — date, status (present/absent), check-in time, check-out time, and total hours worked.
-
-EMAILS: You receive emails when — you are added to the portal (with login credentials), a task is assigned to you, a task is overdue, your supervisor adds a note on your task.
-
-Always answer based on this intern portal. If asked something unrelated, politely redirect.`;
+// The system prompts describing what admins/interns can do now live
+// server-side (backend/src/controllers/aiController.js), chosen based on
+// req.user.role -- the client just sends the conversation and never talks
+// to Groq directly. See that file if you need to update the assistant's
+// knowledge of portal features.
 
 const AIChatBot = () => {
   const { admin, intern } = useAuth();
@@ -51,19 +15,29 @@ const AIChatBot = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [available, setAvailable] = useState(true); // assume available until checked, to avoid a flash of "hidden then shown"
   const bottomRef = useRef(null);
 
   const isAdmin = !!admin;
   const isIntern = !!intern;
   const isLoggedIn = isAdmin || isIntern;
 
+  // No point showing the bubble at all if neither this org nor the server
+  // has a Groq key configured -- every click would just fail.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    aiService.status()
+      .then(res => setAvailable(res.data.data.available))
+      .catch(() => setAvailable(true)); // fail open -- don't hide the feature over a transient network error
+  }, [isLoggedIn]);
+
   useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([{
         role: 'assistant',
         content: isAdmin
-          ? `Hi ${admin?.name}! 👋 I can help you with anything in the portal — interns, tasks, attendance, exports, and more. What do you need?`
-          : `Hi ${intern?.name}! 👋 I can help you navigate your intern portal — tasks, attendance, and more. What do you need?`,
+          ? `Hi ${admin?.name}! I can help you with anything in the portal — interns, tasks, attendance, exports, and more. What do you need?`
+          : `Hi ${intern?.name}! I can help you navigate your intern portal — tasks, attendance, and more. What do you need?`,
       }]);
     }
   }, [open]);
@@ -72,7 +46,7 @@ const AIChatBot = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  if (!isLoggedIn) return null;
+  if (!isLoggedIn || !available) return null;
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -83,15 +57,8 @@ const AIChatBot = () => {
     setLoading(true);
 
     try {
-      const chat = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: isAdmin ? ADMIN_SYSTEM : INTERN_SYSTEM },
-          ...updated.map(m => ({ role: m.role, content: m.content })),
-        ],
-        max_tokens: 400,
-      });
-      const reply = chat.choices[0]?.message?.content?.trim();
+      const res = await aiService.chat(updated.map(m => ({ role: m.role, content: m.content })));
+      const reply = res.data.data.reply;
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }]);
@@ -115,7 +82,7 @@ const AIChatBot = () => {
         }}
         title="AI Assistant"
       >
-        {open ? '✕' : '✦'}
+        {open ? <CloseIcon size={20} /> : <SparkleIcon size={20} />}
       </button>
 
       {/* Chat Window */}
@@ -129,7 +96,7 @@ const AIChatBot = () => {
         }}>
           {/* Header */}
           <div style={{ background: '#4F46E5', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 18 }}>✦</span>
+            <span style={{ display: 'flex' }}><SparkleIcon size={18} /></span>
             <div>
               <div style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>Portal Assistant</div>
               <div style={{ color: '#C7D2FE', fontSize: 11 }}>{isAdmin ? 'Admin mode' : 'Intern mode'}</div>

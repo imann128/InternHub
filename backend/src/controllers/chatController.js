@@ -2,6 +2,7 @@ const ChatModel = require('../models/chatModel');
 const slackService = require('../services/slackService');
 const path = require('path');
 const fs = require('fs');
+const { encryptAndWrite, readAndDecrypt } = require('../utils/fileCrypto');
 
 const CHAT_UPLOAD_DIR = path.join(__dirname, '..', '..', 'chat-uploads');
 
@@ -9,8 +10,9 @@ const getMessages = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
     const { intern_id } = req.params;
-    const messages = await ChatModel.getMessages(orgId, intern_id);
-    res.json({ success: true, data: messages });
+    const { page, limit } = req.query;
+    const { rows, pagination } = await ChatModel.getMessages(orgId, intern_id, { page, limit });
+    res.json({ success: true, data: rows, pagination });
   } catch (err) { next(err); }
 };
 
@@ -25,8 +27,9 @@ const getAllConversations = async (req, res, next) => {
 const getAnnouncements = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const data = await ChatModel.getAnnouncements(orgId);
-    res.json({ success: true, data });
+    const { page, limit } = req.query;
+    const { rows, pagination } = await ChatModel.getAnnouncements(orgId, { page, limit });
+    res.json({ success: true, data: rows, pagination });
   } catch (err) { next(err); }
 };
 
@@ -40,11 +43,17 @@ const sendMessage = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Message or file required' });
     }
 
-    // file_url now points at an authenticated API route, not a static path —
-    // multer already saved the file under chat-uploads/<orgId>/<filename>.
-    const file_url = file ? `/api/chat/files/${file.filename}` : null;
-    const file_name = file ? file.originalname : null;
-    const file_type = file ? file.mimetype : null;
+    // file_url points at an authenticated API route, not a static path.
+    // The file arrives in memory (see middleware/upload.js) so it can be
+    // encrypted before ever touching disk.
+    let file_url = null, file_name = null, file_type = null;
+    if (file) {
+      const destDir = path.join(CHAT_UPLOAD_DIR, String(orgId));
+      const filename = encryptAndWrite(file.buffer, destDir, file.originalname);
+      file_url = `/api/chat/files/${filename}`;
+      file_name = file.originalname;
+      file_type = file.mimetype;
+    }
 
     const msg = await ChatModel.sendMessage(orgId, {
       sender_role,
@@ -81,8 +90,9 @@ const deleteMessage = async (req, res, next) => {
 const getMyMessages = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const messages = await ChatModel.getMessages(orgId, req.user.id);
-    res.json({ success: true, data: messages });
+    const { page, limit } = req.query;
+    const { rows, pagination } = await ChatModel.getMessages(orgId, req.user.id, { page, limit });
+    res.json({ success: true, data: rows, pagination });
   } catch (err) { next(err); }
 };
 
@@ -96,9 +106,14 @@ const sendMyMessage = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Message or file required' });
     }
 
-    const file_url = file ? `/api/chat/files/${file.filename}` : null;
-    const file_name = file ? file.originalname : null;
-    const file_type = file ? file.mimetype : null;
+    let file_url = null, file_name = null, file_type = null;
+    if (file) {
+      const destDir = path.join(CHAT_UPLOAD_DIR, String(orgId));
+      const filename = encryptAndWrite(file.buffer, destDir, file.originalname);
+      file_url = `/api/chat/files/${filename}`;
+      file_name = file.originalname;
+      file_type = file.mimetype;
+    }
 
     const msg = await ChatModel.sendMessage(orgId, {
       sender_role: 'intern',
@@ -137,7 +152,7 @@ const downloadFile = async (req, res, next) => {
     const downloadName = String(row.file_name || filename).replace(/[\r\n"]/g, '');
     res.setHeader('Content-Type', row.file_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
-    fs.createReadStream(abs).pipe(res);
+    res.send(readAndDecrypt(abs));
   } catch (err) { next(err); }
 };
 

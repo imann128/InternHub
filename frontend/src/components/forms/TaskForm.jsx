@@ -1,11 +1,7 @@
-import { useState } from 'react';
-import Groq from 'groq-sdk';
+import { useState, useEffect } from 'react';
+import { SparkleIcon } from '../common/Icons';
+import aiService from '../../services/aiService';
 import '../../styles/forms.css';
-
-const groq = new Groq({
-  apiKey: process.env.REACT_APP_GROQ_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
 
 const TaskForm = ({ interns, onSubmit, submitting, onCancel, initialData }) => {
   const [form, setForm] = useState({
@@ -21,6 +17,13 @@ const TaskForm = ({ interns, onSubmit, submitting, onCancel, initialData }) => {
   const [errors, setErrors] = useState({});
   const [enhancing, setEnhancing] = useState(false);
   const [enhanced, setEnhanced] = useState(false);
+  const [aiAvailable, setAiAvailable] = useState(true); // assume available until checked
+
+  useEffect(() => {
+    aiService.status()
+      .then(res => setAiAvailable(res.data.data.available))
+      .catch(() => setAiAvailable(true)); // fail open -- don't hide the feature over a transient network error
+  }, []);
 
   const isEditMode = !!initialData;
 
@@ -53,18 +56,8 @@ const TaskForm = ({ interns, onSubmit, submitting, onCancel, initialData }) => {
     }
     setEnhancing(true);
     try {
-      const context = form.description.trim()
-        ? `Task title: "${form.title}". Admin's notes: "${form.description}".`
-        : `Task title: "${form.title}".`;
-      const chat = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a task manager assistant. Generate a clear, professional, and detailed task description for an intern. Keep it 3 to 5 sentences. No bullet points. Plain paragraph only.' },
-          { role: 'user', content: `${context} Generate a detailed description for this task.` },
-        ],
-        max_tokens: 200,
-      });
-      setForm(p => ({ ...p, description: chat.choices[0]?.message?.content?.trim() }));
+      const res = await aiService.enhanceTask(form.title, form.description);
+      setForm(p => ({ ...p, description: res.data.data.description }));
       setEnhanced(true);
     } catch (err) {
       setErrors(p => ({ ...p, title: err.message }));
@@ -127,9 +120,11 @@ const TaskForm = ({ interns, onSubmit, submitting, onCancel, initialData }) => {
       <div className="form-group">
         <div className="label-row">
           <label className="form-label">Task Title</label>
-          <button type="button" className="btn-enhance" onClick={handleEnhance} disabled={enhancing}>
-            {enhancing ? <><span className="btn-spinner-dark" /> Enhancing...</> : '✦ Enhance with AI'}
-          </button>
+          {aiAvailable && (
+            <button type="button" className="btn-enhance" onClick={handleEnhance} disabled={enhancing}>
+              {enhancing ? <><span className="btn-spinner-dark" /> Enhancing...</> : <><SparkleIcon size={12} /> Enhance with AI</>}
+            </button>
+          )}
         </div>
         <input
           className={`form-input ${errors.title ? 'input-error' : ''}`}
@@ -146,7 +141,7 @@ const TaskForm = ({ interns, onSubmit, submitting, onCancel, initialData }) => {
         <div className="label-row">
           <label className="form-label">
             Description
-            {enhanced && <span className="ai-badge">✦ AI Enhanced</span>}
+            {enhanced && <span className="ai-badge"><SparkleIcon size={10} /> AI Enhanced</span>}
           </label>
           {enhanced && (
             <button type="button" className="btn-regenerate" onClick={handleEnhance} disabled={enhancing}>

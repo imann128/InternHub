@@ -1,0 +1,98 @@
+-- DB role separation for Interns-Portal
+--
+-- WHY THIS EXISTS:
+-- Right now every query the running server makes -- and every migration --
+-- uses the same Postgres role. If that role is (or ever becomes) a
+-- superuser/owner, then *any* SQL injection bug, ORM/query-builder mistake,
+-- or leaked credential gives an attacker DROP TABLE / ALTER TABLE / GRANT
+-- power, not just "read someone else's data." Parameterized queries protect
+-- against injection today, but they're an application-layer guarantee, not
+-- a database-layer one -- a single missed `pool.query(rawString)` in a
+-- future PR is one bug away from being catastrophic if the role behind it
+-- can drop tables.
+--
+-- The fix is to run the live server under a role that is *structurally
+-- incapable* of DDL (CREATE/ALTER/DROP), no matter what SQL string reaches
+-- it. Migrations still need DDL, so they run under a separate, more
+-- privileged role that the server never uses.
+--
+-- HOW TO USE THIS FILE:
+-- Copy it to roles.sql (already gitignored -- see .gitignore -- because the
+-- real version will contain live passwords), replace the two placeholder
+-- passwords below with real generated secrets, then run it ONCE against
+-- your real database as a superuser or the current DB owner:
+--   psql -U postgres -d your_db -f roles.sql
+--
+-- Idempotent: safe to re-run if you add tables later -- the DEFAULT
+-- PRIVILEGES clause at the bottom means any table created *after* this
+-- script runs (e.g. by a future migration) is automatically granted to
+-- interns_app too, so you don't have to remember to re-run grants by hand.
+
+-- 1. Owner/migration role -- this is who runs `node src/config/migrate.js`.
+--    Needs full DDL rights on this database. Never used by the running app.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'interns_owner') THEN
+    CREATE ROLE interns_owner WITH LOGIN PASSWORD 'REPLACE_WITH_STRONG_SECRET_OWNER' NOCREATEDB NOCREATEROLE NOSUPERUSER;
+  END IF;
+END
+$$;
+
+-- 2. App/runtime role -- this is who the Express server connects as
+--    (DB_USER in backend/.env for the running process). DML only: no
+--    CREATE, ALTER, DROP, TRUNCATE, or GRANT capability whatsoever.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'interns_app') THEN
+    CREATE ROLE interns_app WITH LOGIN PASSWORD 'REPLACE_WITH_STRONG_SECRET_APP' NOCREATEDB NOCREATEROLE NOSUPERUSER;
+  END IF;
+END
+$$;
+
+-- Ownership: interns_owner should own every table in this database. If your
+-- tables are currently owned by some other role (e.g. the default
+-- `postgres` user, or whatever role you've been running migrate.js as),
+-- run reassign_ownership.sql (in this same directory) after this script --
+-- NOT `REASSIGN OWNED BY <old_role> TO interns_owner`, which fails with
+-- "cannot reassign ownership of objects owned by role postgres because
+-- they are required by the database system" when the old role is the
+-- bootstrap superuser. reassign_ownership.sql moves just the tables,
+-- sequences, and functions instead of everything that role owns.
+
+-- GRANT ... ON DATABASE requires a plain identifier, not a function call --
+-- CURRENT_DATABASE() can't be written literally there. Using dynamic SQL
+-- (EXECUTE format(...)) instead means this script still works regardless
+-- of what you've named your database, without you having to hand-edit it.
+DO $$
+BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO interns_app', current_database());
+END
+$$;
+GRANT USAGE ON SCHEMA public TO interns_app;
+
+-- DML on every table that exists right now.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO interns_app;
+
+-- Sequences (SERIAL/BIGSERIAL id columns) need USAGE for nextval() to work
+-- on INSERT.
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO interns_app;
+
+-- Any table/sequence created AFTER this script runs (i.e. by a future
+-- migration, run as interns_owner) is automatically granted the same DML
+-- rights to interns_app -- no manual re-grant step to forget.
+ALTER DEFAULT PRIVILEGES FOR ROLE interns_owner IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO interns_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE interns_owner IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO interns_app;
+
+-- Explicitly confirm interns_app has no DDL capability (this is already
+-- true by default for a plain CREATE ROLE with no extra grants, but stated
+-- here so the intent is visible in the script rather than relying on an
+-- absence of grants elsewhere):
+REVOKE CREATE ON SCHEMA public FROM interns_app;
+DO $$
+BEGIN
+  EXECUTE format('REVOKE ALL ON DATABASE %I FROM interns_app', current_database());
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO interns_app', current_database());
+END
+$$;

@@ -4,6 +4,7 @@ import useCamera from '../../hooks/useCamera';
 import { loadFaceModels, getFaceDescriptor } from '../../utils/faceApi';
 import internPortalService from '../../services/internPortalService';
 import { toast } from 'react-toastify';
+import { CameraIcon } from '../../components/common/Icons';
 import '../../styles/verify.css';
 
 const VerifyIdentity = () => {
@@ -57,7 +58,7 @@ const VerifyIdentity = () => {
     <div className="verify-page">
       <div className="verify-card slide-up">
         <div className="verify-header">
-          <div className="verify-icon">◉</div>
+          <div className="verify-icon"><CameraIcon size={20} /></div>
           <h2 className="verify-title">Verify Your Identity</h2>
           <p className="verify-sub">
             One-time face setup. This will be used to verify your check-in/out at the SINES building.

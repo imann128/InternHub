@@ -1,21 +1,106 @@
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 14px;
 }
 
 .charts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 14px;
+}
+
+.dash-panel {
+  background: var(--bg-panel);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.dash-panel-purple {
+  background: var(--accent-purple-light);
 }
 
 .chart-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
+}
+
+.donut-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.donut-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.donut-legend-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted-strong);
+  text-transform: capitalize;
+}
+
+.donut-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donut-legend-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dept-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dept-row-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.dept-row-name {
+  font-size: 12.5px;
+  color: var(--muted-strong);
+}
+
+.dept-row-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dept-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.dept-bar-fill {
+  height: 100%;
+  border-radius: 999px;
 }
 
 @media (max-width: 1024px) {
@@ -31,36 +116,36 @@
 .dashboard-bottom {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 14px;
+  align-items: start;
 }
 
 /* ACTIVITY */
-.activity-list { display: flex; flex-direction: column; gap: 12px; }
+.activity-list { display: flex; flex-direction: column; gap: 10px; }
 
 .activity-item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  background: var(--bg-inset);
+  border-radius: 14px;
+  padding: 10px 12px;
 }
 
-.activity-item:last-child { border-bottom: none; padding-bottom: 0; }
-
 .activity-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
 .activity-message {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text);
   margin: 0 0 3px;
 }
@@ -71,31 +156,32 @@
 }
 
 /* PERFORMANCE */
-.performance-list { display: flex; flex-direction: column; gap: 14px; }
+.performance-list { display: flex; flex-direction: column; gap: 12px; }
 
 .performance-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   cursor: pointer;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s;
+  background: var(--bg-inset);
+  border-radius: 14px;
+  padding: 12px 14px;
+  transition: transform 0.15s;
 }
 
-.performance-item:hover { background: var(--bg); }
+.performance-item:hover { transform: translateY(-1px); }
 
 .perf-avatar {
-  width: 36px;
-  height: 36px;
-  background: var(--primary-light);
+  width: 28px;
+  height: 28px;
+  background: var(--bg-panel);
   color: var(--primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
@@ -104,24 +190,25 @@
 .perf-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 10px;
 }
 
-.perf-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.perf-name { font-size: 12.5px; font-weight: 600; color: var(--text); flex: 1; }
 
-.perf-bars { display: flex; flex-direction: column; gap: 4px; }
+.perf-bars { display: flex; gap: 16px; }
+
+.perf-bar-group { flex: 1; }
 
 .perf-bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 3px;
 }
 
 .perf-bar-label {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
-  width: 40px;
   flex-shrink: 0;
 }
 

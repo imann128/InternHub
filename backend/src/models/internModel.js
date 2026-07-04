@@ -1,38 +1,60 @@
 const pool = require('../config/db');
+const { parsePagination, buildMeta } = require('../utils/pagination');
+
+// Same 404-vs-409 contract used across every versioned model in this app:
+// 0 affected rows from the UPDATE could mean "not found" or "version
+// conflict" -- a follow-up existence check (still org-scoped) disambiguates.
+const resolveUpdateOutcome = async (updateResult, existsQuery, existsParams) => {
+  if (updateResult.rows[0]) return updateResult.rows[0];
+  const exists = await pool.query(existsQuery, existsParams);
+  return exists.rows[0] ? { conflict: true } : null;
+};
 
 const InternModel = {
-  getAll: async (organizationId, { search, department, status }) => {
-    let query = 'SELECT interns.* FROM interns WHERE organization_id = $1';
+  getAll: async (organizationId, { search, department, status, page, limit }) => {
+    let filterSql = '';
     const params = [organizationId];
 
     if (search) {
       params.push(`%${search}%`);
-      query += ` AND name ILIKE $${params.length}`;
+      filterSql += ` AND name ILIKE $${params.length}`;
     }
     if (department) {
       params.push(department);
-      query += ` AND department = $${params.length}`;
+      filterSql += ` AND department = $${params.length}`;
     }
-
     if (status) {
       params.push(status);
-      query += ` AND interns.status = $${params.length}`;
+      filterSql += ` AND interns.status = $${params.length}`;
     }
 
-    query += ' ORDER BY created_at DESC';
-    const result = await pool.query(query, params);
-    return result.rows;
+    const baseWhere = 'WHERE organization_id = $1 AND deleted_at IS NULL' + filterSql;
+
+    // Count runs with the exact same filters, before limit/offset are
+    // pushed onto params, so the page controls on the frontend know the
+    // true total instead of just "however many rows came back this page."
+    const countResult = await pool.query(`SELECT COUNT(*) FROM interns ${baseWhere}`, params);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const { page: pageNum, limit: limitNum, offset } = parsePagination({ page, limit });
+    params.push(limitNum, offset);
+    const result = await pool.query(
+      `SELECT interns.* FROM interns ${baseWhere} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+
+    return { rows: result.rows, pagination: buildMeta(total, pageNum, limitNum) };
   },
 
   getProfile: async (organizationId, id) => {
     const internResult = await pool.query(
-      'SELECT * FROM interns WHERE id = $1 AND organization_id = $2',
+      'SELECT * FROM interns WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL',
       [id, organizationId]
     );
     if (!internResult.rows[0]) return null;
 
     const tasksResult = await pool.query(
-      'SELECT * FROM tasks WHERE intern_id = $1 AND organization_id = $2 ORDER BY created_at DESC',
+      'SELECT * FROM tasks WHERE intern_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC',
       [id, organizationId]
     );
 
@@ -61,7 +83,7 @@ const InternModel = {
 
   getById: async (organizationId, id) => {
     const result = await pool.query(
-      'SELECT * FROM interns WHERE id = $1 AND organization_id = $2',
+      'SELECT * FROM interns WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL',
       [id, organizationId]
     );
     return result.rows[0];
@@ -78,22 +100,32 @@ const InternModel = {
     return { ...result.rows[0], tempPassword };
   },
 
-  update: async (organizationId, id, { name, email, department, joining_date, status, location_id }) => {
+  update: async (organizationId, id, { name, email, department, joining_date, status, location_id, expectedVersion }) => {
     const result = await pool.query(
       `UPDATE interns SET name=$1, email=$2, department=$3, joining_date=$4, status=COALESCE($5,status),
-       location_id=$6 WHERE id=$7 AND organization_id=$8 RETURNING *`,
-      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, status || null, location_id || null, id, organizationId]
+       location_id=$6 WHERE id=$7 AND organization_id=$8 AND deleted_at IS NULL AND version=$9 RETURNING *`,
+      [name.trim(), email.trim().toLowerCase(), department.trim(), joining_date, status || null, location_id || null, id, organizationId, expectedVersion]
+    );
+    return resolveUpdateOutcome(
+      result,
+      'SELECT id FROM interns WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL',
+      [id, organizationId]
+    );
+  },
+
+  delete: async (organizationId, id) => {
+    const result = await pool.query(
+      'UPDATE interns SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL RETURNING *',
+      [id, organizationId]
     );
     return result.rows[0];
   },
 
-  delete: async (organizationId, id) => {
-    await pool.query('DELETE FROM interns WHERE id = $1 AND organization_id = $2', [id, organizationId]);
-  },
-
   emailExists: async (email, excludeId = null) => {
-    // Global check by design — email is unique across all orgs, not per-org.
-    let query = 'SELECT id FROM interns WHERE email = $1';
+    // Global check by design -- email is unique across all orgs, not per-org.
+    // Soft-deleted interns don't block reuse of their email (partial unique
+    // index in migrate.js), so this only looks at active rows.
+    let query = 'SELECT id FROM interns WHERE email = $1 AND deleted_at IS NULL';
     const params = [email.trim().toLowerCase()];
     if (excludeId) {
       params.push(excludeId);
@@ -106,21 +138,21 @@ const InternModel = {
   toggleStatus: async (organizationId, id) => {
     const result = await pool.query(
       `UPDATE interns SET status = CASE WHEN status='active' THEN 'inactive' ELSE 'active' END
-      WHERE id=$1 AND organization_id=$2 RETURNING *`,
+      WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL RETURNING *`,
       [id, organizationId]
     );
     return result.rows[0];
   },
 
   findByEmail: async (email) => {
-    // Global lookup by design — used at login before organization_id is known.
-    const result = await pool.query('SELECT * FROM interns WHERE email = $1', [email.trim().toLowerCase()]);
+    // Global lookup by design -- used at login before organization_id is known.
+    const result = await pool.query('SELECT * FROM interns WHERE email = $1 AND deleted_at IS NULL', [email.trim().toLowerCase()]);
     return result.rows[0];
   },
 
   saveFaceDescriptor: async (organizationId, id, descriptor) => {
     const result = await pool.query(
-      'UPDATE interns SET face_descriptor = $1, face_verified = TRUE WHERE id = $2 AND organization_id = $3 RETURNING id, name, email, face_verified',
+      'UPDATE interns SET face_descriptor = $1, face_verified = TRUE WHERE id = $2 AND organization_id = $3 AND deleted_at IS NULL RETURNING id, name, email, face_verified',
       [JSON.stringify(descriptor), id, organizationId]
     );
     return result.rows[0];
@@ -128,8 +160,77 @@ const InternModel = {
 
   getFaceDescriptor: async (organizationId, id) => {
     const result = await pool.query(
-      'SELECT face_descriptor, face_verified FROM interns WHERE id = $1 AND organization_id = $2',
+      'SELECT face_descriptor, face_verified FROM interns WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL',
       [id, organizationId]
+    );
+    return result.rows[0];
+  },
+
+  // Records the intern's acceptance of the data/privacy consent notice.
+  // Stamped server-side (NOW(), not a client-supplied timestamp) so it's
+  // an actual audit record, not just a value the browser could fake or
+  // lose on refresh. consent_version is stored alongside it so a future
+  // policy revision can tell "accepted the old version" apart from "never
+  // accepted at all."
+  recordConsent: async (organizationId, id, version) => {
+    const result = await pool.query(
+      `UPDATE interns SET consent_accepted_at = CURRENT_TIMESTAMP, consent_version = $1
+       WHERE id = $2 AND organization_id = $3 AND deleted_at IS NULL
+       RETURNING id, consent_accepted_at, consent_version`,
+      [version, id, organizationId]
+    );
+    return result.rows[0];
+  },
+
+  // Self-service profile edit from the intern's own Settings page — narrower
+  // than the admin-side `update` above (no status/location_id changes here;
+  // those stay admin-controlled). Same optimistic-lock contract as every
+  // other versioned update in this app.
+  updateSelf: async (organizationId, id, { name, email, department, expectedVersion }) => {
+    const result = await pool.query(
+      `UPDATE interns SET name=$1, email=$2, department=$3
+       WHERE id=$4 AND organization_id=$5 AND deleted_at IS NULL AND version=$6 RETURNING *`,
+      [name.trim(), email.trim().toLowerCase(), department.trim(), id, organizationId, expectedVersion]
+    );
+    return resolveUpdateOutcome(
+      result,
+      'SELECT id FROM interns WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL',
+      [id, organizationId]
+    );
+  },
+
+  verifyPassword: async (plain, hashed) => {
+    const bcrypt = require('bcryptjs');
+    if (!hashed) return false;
+    return bcrypt.compare(plain, hashed);
+  },
+
+  changePassword: async (organizationId, id, newPassword) => {
+    const bcrypt = require('bcryptjs');
+    const hashed = await bcrypt.hash(newPassword, 12);
+    const result = await pool.query(
+      'UPDATE interns SET password=$1 WHERE id=$2 AND organization_id=$3 AND deleted_at IS NULL RETURNING id',
+      [hashed, id, organizationId]
+    );
+    return result.rows[0];
+  },
+
+  getPreferences: async (organizationId, id) => {
+    const result = await pool.query(
+      'SELECT email_notifications, chat_sound FROM interns WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL',
+      [id, organizationId]
+    );
+    return result.rows[0];
+  },
+
+  updatePreferences: async (organizationId, id, { email_notifications, chat_sound }) => {
+    const result = await pool.query(
+      `UPDATE interns SET
+         email_notifications = COALESCE($1, email_notifications),
+         chat_sound = COALESCE($2, chat_sound)
+       WHERE id=$3 AND organization_id=$4 AND deleted_at IS NULL
+       RETURNING email_notifications, chat_sound`,
+      [email_notifications ?? null, chat_sound ?? null, id, organizationId]
     );
     return result.rows[0];
   },

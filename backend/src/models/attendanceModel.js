@@ -2,10 +2,13 @@ const pool = require('../config/db');
 
 const AttendanceModel = {
   getAll: async (organizationId, { intern_id, date }) => {
+    // JOIN (not LEFT JOIN) on interns so records belonging to a soft-deleted
+    // intern drop out of the active list -- the attendance rows themselves
+    // are left untouched in the DB.
     let query = `
-      SELECT a.*, i.name as intern_name 
-      FROM attendance a 
-      LEFT JOIN interns i ON a.intern_id = i.id 
+      SELECT a.*, i.name as intern_name
+      FROM attendance a
+      JOIN interns i ON a.intern_id = i.id AND i.deleted_at IS NULL
       WHERE a.organization_id = $1
     `;
     const params = [organizationId];
@@ -29,7 +32,7 @@ const AttendanceModel = {
       LEFT JOIN attendance a ON a.intern_id = i.id
         AND a.date BETWEEN $1 AND $2
         AND a.organization_id = $4
-      WHERE i.organization_id = $4 AND ($3::int IS NULL OR i.id = $3)
+      WHERE i.organization_id = $4 AND i.deleted_at IS NULL AND ($3::int IS NULL OR i.id = $3)
       GROUP BY i.id, i.name, i.department
       ORDER BY total_hours DESC
     `, [week_start, week_end, intern_id || null, organizationId]);

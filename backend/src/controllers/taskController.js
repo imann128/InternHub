@@ -4,13 +4,14 @@ const InternModel = require('../models/internModel');
 const OrganizationModel = require('../models/organizationModel');
 const slackService = require('../services/slackService');
 const emailService = require('../services/emailService');
+const { logAudit } = require('../services/auditService');
 
 const getAll = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const { status, intern_id, priority } = req.query;
-    const tasks = await TaskModel.getAll(orgId, { status, intern_id, priority });
-    res.json({ success: true, data: tasks });
+    const { status, intern_id, priority, page, limit } = req.query;
+    const { rows, pagination } = await TaskModel.getAll(orgId, { status, intern_id, priority, page, limit });
+    res.json({ success: true, data: rows, pagination });
   } catch (err) { next(err); }
 };
 
@@ -52,6 +53,11 @@ const create = async (req, res, next) => {
         priority: task.priority,
         due_date: task.due_date,
       }).catch(() => { });
+      logAudit({
+        organizationId: orgId, actorId: req.user?.id, actorRole: req.user?.role, action: 'create',
+        entityType: 'task', entityId: task.id,
+        changedFields: { title: task.title, intern_id: task.intern_id, priority: task.priority, due_date: task.due_date },
+      });
       tasks.push(task);
     }
 
@@ -62,30 +68,54 @@ const create = async (req, res, next) => {
 const updateStatus = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const task = await TaskModel.updateStatus(orgId, req.params.id, req.body);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+    const { version } = req.body;
+    if (version == null) {
+      return res.status(400).json({ success: false, message: 'Missing version — refresh and try again' });
+    }
+    const outcome = await TaskModel.updateStatus(orgId, req.params.id, { ...req.body, expectedVersion: version });
+    if (!outcome) return res.status(404).json({ success: false, message: 'Task not found' });
+    if (outcome.conflict) {
+      return res.status(409).json({ success: false, message: 'This task was updated by someone else. Refresh and try again.' });
+    }
+    logAudit({
+      organizationId: orgId, actorId: req.user?.id, actorRole: req.user?.role, action: 'update',
+      entityType: 'task', entityId: outcome.id,
+      changedFields: { status: outcome.status, due_date: outcome.due_date, priority: outcome.priority },
+    });
 
-    if (task.status === 'pending' && task.due_date && new Date(task.due_date) < new Date()) {
-      const intern = await InternModel.getById(orgId, task.intern_id);
+    if (outcome.status === 'pending' && outcome.due_date && new Date(outcome.due_date) < new Date()) {
+      const intern = await InternModel.getById(orgId, outcome.intern_id);
       if (intern) {
         await emailService.sendTaskOverdue({
           intern_name: intern.name,
           intern_email: intern.email,
-          task_title: task.title,
-          task_due_date: task.due_date,
+          task_title: outcome.title,
+          task_due_date: outcome.due_date,
         }).catch(() => { });
       }
     }
-    res.json({ success: true, data: task });
+    res.json({ success: true, data: outcome });
   } catch (err) { next(err); }
 };
 
 const update = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const task = await TaskModel.update(orgId, req.params.id, req.body);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
-    res.json({ success: true, data: task });
+    const { version } = req.body;
+    if (version == null) {
+      return res.status(400).json({ success: false, message: 'Missing version — refresh and try again' });
+    }
+    const outcome = await TaskModel.update(orgId, req.params.id, { ...req.body, expectedVersion: version });
+    if (!outcome) return res.status(404).json({ success: false, message: 'Task not found' });
+    if (outcome.conflict) {
+      return res.status(409).json({ success: false, message: 'This task was updated by someone else. Refresh and try again.' });
+    }
+    logAudit({
+      organizationId: orgId, actorId: req.user?.id, actorRole: req.user?.role, action: 'update',
+      entityType: 'task', entityId: outcome.id,
+      changedFields: { title: outcome.title, description: outcome.description, priority: outcome.priority, due_date: outcome.due_date },
+    });
+    res.json({ success: true, data: outcome });
   } catch (err) { next(err); }
 };
 
@@ -94,6 +124,10 @@ const remove = async (req, res, next) => {
     const orgId = req.user.organization_id;
     const task = await TaskModel.delete(orgId, req.params.id);
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+    logAudit({
+      organizationId: orgId, actorId: req.user?.id, actorRole: req.user?.role, action: 'delete',
+      entityType: 'task', entityId: task.id,
+    });
     res.json({ success: true, data: task });
   } catch (err) { next(err); }
 };

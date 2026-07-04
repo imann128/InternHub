@@ -29,7 +29,10 @@ const InternForm = ({ initial, onSubmit, submitting, onCancel, departments, loca
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (validate()) onSubmit(form);
+    // version is only present on edit (see internController.update) —
+    // required by the backend's optimistic-lock check so two admins editing
+    // the same intern don't silently clobber each other. Absent on create.
+    if (validate()) onSubmit(initial?.version != null ? { ...form, version: initial.version } : form);
   };
 
   return (
@@ -77,7 +80,7 @@ const InternForm = ({ initial, onSubmit, submitting, onCancel, departments, loca
       <div className="form-actions">
         <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn-primary" disabled={submitting}>
-          {submitting ? 'Saving...' : initial ? 'Update' : 'Add Intern'}
+          {submitting ? 'Saving...' : initial ? 'Save changes' : 'Add intern'}
         </button>
       </div>
     </form>

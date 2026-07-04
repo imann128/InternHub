@@ -5,6 +5,8 @@ import EmptyState from '../components/common/EmptyState';
 import attendanceService from '../services/attendanceService';
 import internService from '../services/internService';
 import { toast } from 'react-toastify';
+import { CheckIcon } from '../components/common/Icons';
+import '../styles/interns.css';
 import '../styles/attendance.css';
 
 const THRESHOLD = 40;
@@ -104,24 +106,12 @@ const Attendance = () => {
   };
 
   return (
-    <MainLayout title="Attendance">
-      <div className="page-header">
-        <div className="filters-row">
-          <div className="tab-switch">
-            <button className={`tab-btn ${tab === 'daily' ? 'tab-active' : ''}`} onClick={() => setTab('daily')}>Daily</button>
-            <button className={`tab-btn ${tab === 'weekly' ? 'tab-active' : ''}`} onClick={() => setTab('weekly')}>Weekly Summary</button>
-          </div>
-          {tab === 'daily' && (
-            <input type="date" className="filter-select" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
-          )}
-          <select className="filter-select" value={filterIntern} onChange={e => setFilterIntern(e.target.value)}>
-            <option value="">All Interns</option>
-            {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-        </div>
-        
+    <MainLayout
+      title="Attendance"
+      action={
         <button
-          className="btn-ghost"
+          className="btn-pill-primary"
+          style={{ background: 'var(--card)', color: 'var(--muted-strong)' }}
           onClick={() => attendanceService.exportCSV({
             date: tab === 'daily' ? selectedDate : undefined,
             intern_id: filterIntern || undefined,
@@ -129,115 +119,130 @@ const Attendance = () => {
         >
           ↓ Export CSV
         </button>
-
-      </div>
-
-      {loading ? <Loader /> : tab === 'daily' ? (
-        filteredInterns.length === 0 ? <EmptyState message="No interns found" /> : (
-          <div className="card table-card">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Department</th>
-                  <th>Check In</th>
-                  <th>Check Out</th>
-                  <th>Hours</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInterns.map(intern => {
-                  const rec = getRecord(intern.id);
-                  const isActing = acting === intern.id;
-                  return (
-                    <tr key={intern.id}>
-                      <td><span className="intern-name">{intern.name}</span></td>
-                      <td><span className="badge badge-muted">{intern.department}</span></td>
-                      <td><span className="time-val">{formatTime(rec?.check_in)}</span></td>
-                      <td><span className="time-val">{formatTime(rec?.check_out)}</span></td>
-                      <td><span className="hours-val">{rec?.total_hours ? `${rec.total_hours}h` : '—'}</span></td>
-                      <td>
-                        {rec ? (
-                          <span className={`badge ${rec.status === 'present' ? 'badge-success' : 'badge-danger'}`}>
-                            {rec.status}
-                          </span>
-                        ) : <span className="badge badge-muted">Not Marked</span>}
-                      </td>
-                      <td>
-                        <div className="action-btns">
-                          {!rec?.check_in && (
-                            <button className="btn-present" onClick={() => handleCheckIn(intern.id)} disabled={isActing}>
-                              {isActing ? '...' : 'Check In'}
-                            </button>
-                          )}
-                          {rec?.check_in && !rec?.check_out && (
-                            <button className="btn-absent" onClick={() => handleCheckOut(intern.id)} disabled={isActing}>
-                              {isActing ? '...' : 'Check Out'}
-                            </button>
-                          )}
-                          {rec?.check_in && rec?.check_out && (
-                            <span className="badge badge-success">Done</span>
-                          )}
-                          {!rec?.check_in && (
-                            <button className="btn-mark-absent" onClick={() => handleMarkAbsent(intern.id)} disabled={isActing}>
-                              Absent
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      }
+    >
+      <div className="page-stack">
+        <div className="filters-row">
+          <div className="tab-switch">
+            <button className={`tab-btn ${tab === 'daily' ? 'tab-active' : ''}`} onClick={() => setTab('daily')}>Daily</button>
+            <button className={`tab-btn ${tab === 'weekly' ? 'tab-active' : ''}`} onClick={() => setTab('weekly')}>Weekly summary</button>
           </div>
-        )
-      ) : (
-        weekly.length === 0 ? <EmptyState message="No data found" /> : (
-          <div className="card table-card">
-            <p className="week-range-label">Week: {weekRange.week_start} → {weekRange.week_end}</p>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Department</th>
-                  <th>Days Present</th>
-                  <th>Days Absent</th>
-                  <th>Total Hours</th>
-                  <th>40hr Target</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weekly.map(row => {
-                  const pct = Math.min((parseFloat(row.total_hours) / THRESHOLD) * 100, 100).toFixed(0);
-                  const met = parseFloat(row.total_hours) >= THRESHOLD;
-                  return (
-                    <tr key={row.intern_id}>
-                      <td><span className="intern-name">{row.intern_name}</span></td>
-                      <td><span className="badge badge-muted">{row.department}</span></td>
-                      <td><span className="badge badge-success">{row.days_present}</span></td>
-                      <td><span className="badge badge-danger">{row.days_absent}</span></td>
-                      <td><span className="hours-val">{parseFloat(row.total_hours).toFixed(2)}h</span></td>
-                      <td>
-                        <div className="progress-wrap">
-                          <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${pct}%`, background: met ? '#22C55E' : '#4F46E5' }} />
+          {tab === 'daily' && (
+            <input type="date" className="filter-select" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+          )}
+          <select className="filter-select" value={filterIntern} onChange={e => setFilterIntern(e.target.value)}>
+            <option value="">All interns</option>
+            {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
+
+        {loading ? <Loader /> : tab === 'daily' ? (
+          filteredInterns.length === 0 ? <EmptyState message="No interns found" /> : (
+            <div className="interns-table-wrap">
+              <table className="interns-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Check in</th>
+                    <th>Check out</th>
+                    <th>Hours</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInterns.map(intern => {
+                    const rec = getRecord(intern.id);
+                    const isActing = acting === intern.id;
+                    return (
+                      <tr key={intern.id}>
+                        <td><span className="intern-name">{intern.name}</span></td>
+                        <td><span className="badge badge-muted">{intern.department}</span></td>
+                        <td><span className="time-val">{formatTime(rec?.check_in)}</span></td>
+                        <td><span className="time-val">{formatTime(rec?.check_out)}</span></td>
+                        <td><span className="hours-val">{rec?.total_hours ? `${rec.total_hours}h` : '—'}</span></td>
+                        <td>
+                          {rec ? (
+                            <span className={`badge ${rec.status === 'present' ? 'badge-success' : 'badge-danger'}`}>
+                              {rec.status}
+                            </span>
+                          ) : <span className="badge badge-muted">Not marked</span>}
+                        </td>
+                        <td>
+                          <div className="action-btns">
+                            {!rec?.check_in && (
+                              <button className="btn-present" onClick={() => handleCheckIn(intern.id)} disabled={isActing}>
+                                {isActing ? '...' : 'Check in'}
+                              </button>
+                            )}
+                            {rec?.check_in && !rec?.check_out && (
+                              <button className="btn-absent" onClick={() => handleCheckOut(intern.id)} disabled={isActing}>
+                                {isActing ? '...' : 'Check out'}
+                              </button>
+                            )}
+                            {rec?.check_in && rec?.check_out && (
+                              <span className="badge badge-success">Done</span>
+                            )}
+                            {!rec?.check_in && (
+                              <button className="btn-mark-absent" onClick={() => handleMarkAbsent(intern.id)} disabled={isActing}>
+                                Absent
+                              </button>
+                            )}
                           </div>
-                          <span className="progress-label" style={{ color: met ? '#16A34A' : '#64748B' }}>
-                            {pct}% {met ? '✓' : ''}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          weekly.length === 0 ? <EmptyState message="No data found" /> : (
+            <div className="interns-table-wrap">
+              <p className="week-range-label">Week: {weekRange.week_start} → {weekRange.week_end}</p>
+              <table className="interns-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Days present</th>
+                    <th>Days absent</th>
+                    <th>Total hours</th>
+                    <th>{THRESHOLD}h target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekly.map(row => {
+                    const pct = Math.min((parseFloat(row.total_hours) / THRESHOLD) * 100, 100).toFixed(0);
+                    const met = parseFloat(row.total_hours) >= THRESHOLD;
+                    return (
+                      <tr key={row.intern_id}>
+                        <td><span className="intern-name">{row.intern_name}</span></td>
+                        <td><span className="badge badge-muted">{row.department}</span></td>
+                        <td><span className="badge badge-success">{row.days_present}</span></td>
+                        <td><span className="badge badge-danger">{row.days_absent}</span></td>
+                        <td><span className="hours-val">{parseFloat(row.total_hours).toFixed(2)}h</span></td>
+                        <td>
+                          <div className="progress-wrap">
+                            <div className="progress-bar">
+                              <div className="progress-fill" style={{ width: `${pct}%`, background: met ? 'var(--accent-teal)' : 'var(--primary)' }} />
+                            </div>
+                            <span className="progress-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: met ? 'var(--accent-teal)' : 'var(--primary)' }}>
+                              {pct}% {met && <CheckIcon size={11} />}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
     </MainLayout>
   );
 };

@@ -2,7 +2,6 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'submissions');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -19,22 +18,21 @@ const ALLOWED_MIME = [
 ];
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const orgId = req.user?.organization_id;
-    const dir = path.join(UPLOAD_DIR, String(orgId));
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const rand = crypto.randomBytes(16).toString('hex');
-    cb(null, `${Date.now()}-${rand}${path.extname(file.originalname)}`);
-  },
-});
+// Memory storage, not disk -- files are encrypted (AES-256-GCM) before ever
+// touching disk, which means multer can't write them directly the way
+// diskStorage did. The controller reads `file.buffer` and calls
+// fileCrypto.encryptAndWrite() itself once it knows the org-scoped
+// destination directory.
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   if (!ALLOWED_MIME.includes(file.mimetype)) {
-    return cb(new Error(`"${file.originalname}" is not an allowed file type.`));
+    const err = new Error(`"${file.originalname}" is not an allowed file type.`);
+    // Explicit 400 so errorHandler.js treats this as a safe, operational
+    // message to show the client instead of masking it behind a generic
+    // "Internal Server Error" in production.
+    err.status = 400;
+    return cb(err);
   }
   cb(null, true);
 };

@@ -24,6 +24,19 @@ const getInternLocationOrError = async (orgId, internId) => {
   return { location };
 };
 
+const { CONSENT_VERSION } = require('../config/consent');
+
+// Record acceptance of the data/privacy consent notice — stamped
+// server-side so there's an auditable record of who consented and when.
+router.post('/consent', authMiddleware, internOnly, async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    const record = await InternModel.recordConsent(orgId, req.user.id, CONSENT_VERSION);
+    if (!record) return res.status(404).json({ success: false, message: 'Intern not found' });
+    res.json({ success: true, data: record });
+  } catch (err) { next(err); }
+});
+
 // Check face verification status
 router.get('/face/status', authMiddleware, internOnly, async (req, res, next) => {
   try {
@@ -166,8 +179,11 @@ router.get('/me', authMiddleware, internOnly, async (req, res, next) => {
     const orgId = req.user.organization_id;
     const id = req.user.id;
     const intern = await pool.query(
-      `SELECT i.id, i.name, i.email, i.department, i.joining_date, i.status,
-              i.location_id, l.name AS location_name, l.is_active AS location_active
+      `SELECT i.id, i.name, i.email, i.department, i.joining_date, i.status, i.version,
+              i.email_notifications, i.chat_sound,
+              i.location_id, l.name AS location_name, l.is_active AS location_active,
+              l.latitude AS location_latitude, l.longitude AS location_longitude,
+              l.radius_meters AS location_radius_meters
        FROM interns i
        LEFT JOIN locations l ON l.id = i.location_id
        WHERE i.id=$1 AND i.organization_id=$2`,
@@ -217,6 +233,73 @@ router.patch('/tasks/:id/complete', authMiddleware, internOnly, async (req, res,
     );
     if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Task not found' });
     res.json({ success: true, data: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
+// --- Settings ---
+
+// Update own profile (name/email/department). Location and status stay
+// admin-controlled — not editable from here.
+router.patch('/profile', authMiddleware, internOnly, async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    const { name, email, department, version } = req.body;
+    if (!name?.trim() || !email?.trim() || !department?.trim()) {
+      return res.status(400).json({ success: false, message: 'Name, email, and department are required' });
+    }
+    if (version == null) {
+      return res.status(400).json({ success: false, message: 'Missing version for update' });
+    }
+
+    const emailTaken = await InternModel.emailExists(email, req.user.id);
+    if (emailTaken) {
+      return res.status(400).json({ success: false, message: 'That email is already in use' });
+    }
+
+    const result = await InternModel.updateSelf(orgId, req.user.id, {
+      name, email, department, expectedVersion: version,
+    });
+    if (!result) return res.status(404).json({ success: false, message: 'Profile not found' });
+    if (result.conflict) {
+      return res.status(409).json({ success: false, message: 'This profile was updated elsewhere. Please refresh and try again.' });
+    }
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// Change own password
+router.patch('/password', authMiddleware, internOnly, async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      return res.status(400).json({ success: false, message: 'Current and new password are required' });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    }
+
+    const intern = await InternModel.getById(orgId, req.user.id);
+    if (!intern) return res.status(404).json({ success: false, message: 'Intern not found' });
+
+    const valid = await InternModel.verifyPassword(current_password, intern.password);
+    if (!valid) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    await InternModel.changePassword(orgId, req.user.id, new_password);
+    res.json({ success: true, message: 'Password updated' });
+  } catch (err) { next(err); }
+});
+
+// Update notification / sound preferences
+router.patch('/preferences', authMiddleware, internOnly, async (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    const { email_notifications, chat_sound } = req.body;
+    const result = await InternModel.updatePreferences(orgId, req.user.id, { email_notifications, chat_sound });
+    if (!result) return res.status(404).json({ success: false, message: 'Intern not found' });
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 

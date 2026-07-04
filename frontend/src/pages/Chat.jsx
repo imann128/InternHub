@@ -3,15 +3,30 @@ import MainLayout from '../components/layout/MainLayout';
 import chatService from '../services/chatService';
 import Loader from '../components/common/Loader';
 import { toast } from 'react-toastify';
+import { CloseIcon, PaperclipIcon, MegaphoneIcon, ChatBubbleIcon } from '../components/common/Icons';
 import '../styles/chat.css';
 
 const formatTime = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+// Merge a page of messages into the existing chronological list, deduping by
+// id and re-sorting -- this lets both "load older page" and "poll for
+// newest page" share one code path without ever producing duplicates or
+// clobbering messages loaded from a different page.
+const mergeMessages = (existing, incoming) => {
+  const map = new Map(existing.map(m => [m.id, m]));
+  incoming.forEach(m => map.set(m.id, m));
+  return Array.from(map.values()).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+};
 
 const Chat = () => {
   const [conversations, setConversations] = useState([]);
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [messagesPagination, setMessagesPagination] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
+  const [announcementsPagination, setAnnouncementsPagination] = useState(null);
+  const [loadingMoreAnnouncements, setLoadingMoreAnnouncements] = useState(false);
   const [tab, setTab] = useState('chats');
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
@@ -27,17 +42,54 @@ const Chat = () => {
       .catch(() => {});
   }, []);
 
+  // Polling always re-fetches just the newest page (page 1) and merges it in
+  // -- this picks up new messages without disturbing older pages the user
+  // has loaded via "Load older messages".
   const fetchMessages = useCallback((intern_id) => {
-    chatService.getMessages(intern_id)
-      .then(res => setMessages(res.data.data))
+    chatService.getMessages(intern_id, { page: 1, limit: 50 })
+      .then(res => {
+        setMessages(prev => mergeMessages(prev, res.data.data));
+        setMessagesPagination(res.data.pagination || null);
+      })
       .catch(() => {});
   }, []);
 
+  const loadOlderMessages = () => {
+    if (!selectedIntern || !messagesPagination || messagesPagination.page >= messagesPagination.totalPages) return;
+    setLoadingOlder(true);
+    chatService.getMessages(selectedIntern.intern_id, { page: messagesPagination.page + 1, limit: 50 })
+      .then(res => {
+        setMessages(prev => mergeMessages(prev, res.data.data));
+        setMessagesPagination(res.data.pagination || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOlder(false));
+  };
+
   const fetchAnnouncements = useCallback(() => {
-    chatService.getAnnouncements()
-      .then(res => setAnnouncements(res.data.data))
+    chatService.getAnnouncements({ page: 1, limit: 50 })
+      .then(res => {
+        setAnnouncements(res.data.data);
+        setAnnouncementsPagination(res.data.pagination || null);
+      })
       .catch(() => {});
   }, []);
+
+  const loadMoreAnnouncements = () => {
+    if (!announcementsPagination || announcementsPagination.page >= announcementsPagination.totalPages) return;
+    setLoadingMoreAnnouncements(true);
+    chatService.getAnnouncements({ page: announcementsPagination.page + 1, limit: 50 })
+      .then(res => {
+        setAnnouncements(prev => {
+          const map = new Map(prev.map(a => [a.id, a]));
+          res.data.data.forEach(a => map.set(a.id, a));
+          return Array.from(map.values());
+        });
+        setAnnouncementsPagination(res.data.pagination || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMoreAnnouncements(false));
+  };
 
   useEffect(() => {
     fetchConversations();
@@ -47,8 +99,14 @@ const Chat = () => {
   useEffect(() => {
     if (!selectedIntern) return;
     setLoading(true);
-    chatService.getMessages(selectedIntern.intern_id)
-      .then(res => { setMessages(res.data.data); setLoading(false); })
+    setMessages([]);
+    setMessagesPagination(null);
+    chatService.getMessages(selectedIntern.intern_id, { page: 1, limit: 50 })
+      .then(res => {
+        setMessages(res.data.data);
+        setMessagesPagination(res.data.pagination || null);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
 
     clearInterval(pollRef.current);
@@ -110,12 +168,13 @@ const Chat = () => {
   };
 
   // Files are now served from an authenticated route, not a static path —
-  // fetch with the JWT attached, then open as a blob.
+  // auth now travels via the HttpOnly access_token cookie (see AuthContext),
+  // not a header, so this just needs credentials: 'include' instead of a
+  // Bearer token pulled from localStorage.
   const handleFileOpen = async (fileUrl, fileName) => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:5000${fileUrl}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to load file');
       const blob = await res.blob();
@@ -129,12 +188,19 @@ const Chat = () => {
 
   const renderMessage = (msg) => {
     const isAnnouncement = msg.is_announcement;
-    const bubbleClass = isAnnouncement ? 'announcement' : msg.sender_role;
+    // "me"/"them" relative to the viewer (an admin, on this page) — not the
+    // raw sender_role, which would hardcode "admin" to always render on the
+    // right even when this same message is viewed from the intern's side.
+    const bubbleClass = isAnnouncement ? 'announcement' : (msg.sender_role === 'admin' ? 'me' : 'them');
 
     return (
       <div key={msg.id} className={`chat-bubble-wrap ${bubbleClass}`}>
         <div className={`chat-bubble ${bubbleClass}`}>
-          {isAnnouncement && <div style={{ fontWeight: 600, marginBottom: 4 }}>📢 Announcement</div>}
+          {isAnnouncement && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700, marginBottom: 6, color: 'var(--warning-dark)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.4 }}>
+              <MegaphoneIcon size={13} /> Announcement
+            </div>
+          )}
           {msg.message && <div>{msg.message}</div>}
           {msg.file_url && (
             <button
@@ -142,12 +208,14 @@ const Chat = () => {
               className="chat-file-link"
               style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'inherit', textDecoration: 'underline', padding: 0 }}
             >
-              📎 {msg.file_name}
+              <PaperclipIcon size={13} /> {msg.file_name}
             </button>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <span style={{ fontSize: 10, opacity: 0.7 }}>{formatTime(msg.created_at)}</span>
-            <button onClick={() => handleDelete(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, opacity: 0.5, color: 'inherit' }}>✕</button>
+            <button onClick={() => handleDelete(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, color: 'inherit', display: 'flex' }}>
+              <CloseIcon size={11} />
+            </button>
           </div>
         </div>
       </div>
@@ -179,16 +247,20 @@ const Chat = () => {
                 </div>
               ))
             ) : (
-              <div style={{ padding: 16 }}>
-                <button className="announce-btn" style={{ width: '100%', marginBottom: 12 }} onClick={() => handleSend(true)} disabled={!text.trim()}>
-                  📢 Send Announcement
-                </button>
+              <div style={{ padding: '0 4px' }}>
                 {announcements.map(a => (
-                  <div key={a.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 13, color: 'var(--text)' }}>{a.message}</div>
+                  <div key={a.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text)' }}>{a.message}</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{formatTime(a.created_at)}</div>
                   </div>
                 ))}
+                {announcementsPagination && announcementsPagination.page < announcementsPagination.totalPages && (
+                  <div style={{ textAlign: 'center', marginTop: 8 }}>
+                    <button className="btn-ghost" onClick={loadMoreAnnouncements} disabled={loadingMoreAnnouncements}>
+                      {loadingMoreAnnouncements ? 'Loading...' : 'Load more'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -198,13 +270,13 @@ const Chat = () => {
         <div className="chat-main">
           {!selectedIntern && tab === 'chats' ? (
             <div className="chat-empty">
-              <div className="chat-empty-icon">💬</div>
+              <div className="chat-empty-icon"><ChatBubbleIcon size={30} /></div>
               <p>Select an intern to start chatting</p>
             </div>
           ) : tab === 'announcements' ? (
             <div className="chat-empty">
-              <div className="chat-empty-icon">📢</div>
-              <p>Type a message below and click Send Announcement</p>
+              <div className="chat-empty-icon"><MegaphoneIcon size={30} /></div>
+              <p>Type a message below and send it to every intern</p>
             </div>
           ) : (
             <>
@@ -214,7 +286,18 @@ const Chat = () => {
               <div className="chat-messages">
                 {loading ? <Loader /> : messages.length === 0 ? (
                   <div className="chat-empty"><p>No messages yet. Say hello!</p></div>
-                ) : messages.map(renderMessage)}
+                ) : (
+                  <>
+                    {messagesPagination && messagesPagination.page < messagesPagination.totalPages && (
+                      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                        <button className="btn-ghost" onClick={loadOlderMessages} disabled={loadingOlder}>
+                          {loadingOlder ? 'Loading...' : 'Load older messages'}
+                        </button>
+                      </div>
+                    )}
+                    {messages.map(renderMessage)}
+                  </>
+                )}
                 <div ref={messagesEndRef} />
               </div>
             </>
@@ -224,28 +307,46 @@ const Chat = () => {
           <div className="chat-input-area">
             {file && (
               <div className="chat-file-preview">
-                📎 {file.name}
-                <button onClick={() => setFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', marginLeft: 'auto' }}>✕</button>
+                <PaperclipIcon size={13} /> {file.name}
+                <button onClick={() => setFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', marginLeft: 'auto', display: 'flex' }}>
+                  <CloseIcon size={12} />
+                </button>
               </div>
             )}
             <div className="chat-input-row">
               <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
-              <button className="chat-file-btn" onClick={() => fileInputRef.current.click()}>📎</button>
-              <textarea
-                className="chat-input"
-                placeholder={tab === 'announcements' ? 'Type announcement...' : 'Type a message...'}
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                rows={1}
-              />
-              <button
-                className="chat-send-btn"
-                onClick={() => handleSend(tab === 'announcements')}
-                disabled={sending || (!text.trim() && !file)}
-              >
-                ➤
-              </button>
+              {tab !== 'announcements' && (
+                <button className="chat-file-btn" onClick={() => fileInputRef.current.click()}>
+                  <PaperclipIcon size={16} />
+                </button>
+              )}
+              <div className="chat-input-pill">
+                <textarea
+                  className="chat-input"
+                  placeholder={tab === 'announcements' ? 'Type announcement…' : 'Type a message…'}
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                />
+              </div>
+              {tab === 'announcements' ? (
+                <button
+                  className="chat-announce-btn"
+                  onClick={() => handleSend(true)}
+                  disabled={sending || !text.trim()}
+                >
+                  Send announcement
+                </button>
+              ) : (
+                <button
+                  className="chat-send-btn"
+                  onClick={() => handleSend(false)}
+                  disabled={sending || (!text.trim() && !file)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"></path></svg>
+                </button>
+              )}
             </div>
           </div>
         </div>

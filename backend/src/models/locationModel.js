@@ -1,5 +1,11 @@
 const pool = require('../config/db');
 
+const resolveUpdateOutcome = async (updateResult, existsQuery, existsParams) => {
+  if (updateResult.rows[0]) return updateResult.rows[0];
+  const exists = await pool.query(existsQuery, existsParams);
+  return exists.rows[0] ? { conflict: true } : null;
+};
+
 const LocationModel = {
   getAll: async (organizationId) => {
     const result = await pool.query(
@@ -34,23 +40,34 @@ const LocationModel = {
     return result.rows[0];
   },
 
-  update: async (organizationId, id, { name, latitude, longitude, radius_meters }) => {
+  update: async (organizationId, id, { name, latitude, longitude, radius_meters, expectedVersion }) => {
     const result = await pool.query(
       `UPDATE locations SET name=$1, latitude=$2, longitude=$3, radius_meters=$4
-       WHERE id=$5 AND organization_id=$6 RETURNING *`,
-      [name.trim(), latitude, longitude, radius_meters || 80, id, organizationId]
+       WHERE id=$5 AND organization_id=$6 AND version=$7 RETURNING *`,
+      [name.trim(), latitude, longitude, radius_meters || 80, id, organizationId, expectedVersion]
     );
-    return result.rows[0];
+    return resolveUpdateOutcome(
+      result,
+      'SELECT id FROM locations WHERE id=$1 AND organization_id=$2',
+      [id, organizationId]
+    );
   },
 
-  setActive: async (organizationId, id, isActive) => {
+  setActive: async (organizationId, id, isActive, expectedVersion) => {
     const result = await pool.query(
-      'UPDATE locations SET is_active = $1 WHERE id = $2 AND organization_id = $3 RETURNING *',
-      [isActive, id, organizationId]
+      'UPDATE locations SET is_active = $1 WHERE id = $2 AND organization_id = $3 AND version = $4 RETURNING *',
+      [isActive, id, organizationId, expectedVersion]
     );
-    return result.rows[0];
+    return resolveUpdateOutcome(
+      result,
+      'SELECT id FROM locations WHERE id=$1 AND organization_id=$2',
+      [id, organizationId]
+    );
   },
 
+  // Not version-checked — a set-membership operation across many intern
+  // rows, not a single-row edit, so optimistic locking doesn't map cleanly
+  // onto it the way it does for update()/setActive().
   assignInterns: async (organizationId, locationId, internIds) => {
     const client = await pool.connect();
     try {

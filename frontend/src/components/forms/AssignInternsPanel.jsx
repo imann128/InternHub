@@ -42,7 +42,7 @@ const AssignInternsPanel = ({ location, allInterns, allLocations, submitting, on
         />
       </div>
 
-      <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--border, #E5E7EB)', borderRadius: 8, marginBottom: 16 }}>
+      <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {filtered.length === 0 ? (
           <p style={{ padding: 16, color: 'var(--muted)', fontSize: 13 }}>No interns found</p>
         ) : filtered.map(intern => {
@@ -51,8 +51,9 @@ const AssignInternsPanel = ({ location, allInterns, allLocations, submitting, on
             <label
               key={intern.id}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                borderBottom: '1px solid var(--border, #F1F5F9)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                borderRadius: 12, cursor: 'pointer',
+                background: checked.has(intern.id) ? 'var(--primary-light)' : 'transparent',
               }}
             >
               <input
@@ -61,8 +62,8 @@ const AssignInternsPanel = ({ location, allInterns, allLocations, submitting, on
                 onChange={() => toggle(intern.id)}
               />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{intern.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{intern.email} · {intern.department}</div>
+                <div style={{ fontSize: 13, color: 'var(--text)' }}>{intern.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{intern.email} · {intern.department}</div>
               </div>
               {assignedElsewhere && (
                 <span className="badge badge-muted" style={{ fontSize: 11 }}>
@@ -74,7 +75,7 @@ const AssignInternsPanel = ({ location, allInterns, allLocations, submitting, on
         })}
       </div>
 
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
+      <p style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 16 }}>
         {checked.size} intern{checked.size === 1 ? '' : 's'} will be assigned to {location.name}.
         Unchecking someone removes them from this location.
       </p>

@@ -5,3 +5,12 @@
   text-overflow: ellipsis;
   display: inline-block;
 }
+
+/* Priority badges use their own palette (blue/purple/teal), independent of
+   status badges (which stay green/amber/red) — matches the design's intent
+   that "high priority" isn't automatically "at risk". */
+.badge-priority-high { background: var(--primary-light); color: var(--primary-dark); }
+.badge-priority-medium { background: var(--accent-purple-light); color: var(--accent-purple); }
+.badge-priority-low { background: var(--accent-teal-light); color: var(--accent-teal); }
+
+.task-row-overdue { background: rgba(192,80,63,0.12) !important; }

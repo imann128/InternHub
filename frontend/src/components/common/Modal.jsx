@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { CloseIcon } from './Icons';
 import './common.css';
 
 const Modal = ({ title, onClose, children }) => {
@@ -13,7 +14,7 @@ const Modal = ({ title, onClose, children }) => {
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="modal-title">{title}</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}><CloseIcon size={14} /></button>
         </div>
         <div className="modal-body">{children}</div>
       </div>

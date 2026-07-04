@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
@@ -9,6 +9,7 @@ import '../../styles/auth.css';
 const InternLogin = () => {
   const { internLogin, intern } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
 
@@ -34,11 +35,17 @@ const InternLogin = () => {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        {location.state?.loggedOut && (
+          <div className="auth-banner-success">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+            You've been signed out
+          </div>
+        )}
         <div className="auth-brand">
-          <div className="auth-logo">IP</div>
-          <span className="auth-title">Intern Portal</span>
+          <div className="auth-logo">IH</div>
+          <span className="auth-title">InternHub</span>
         </div>
-        <h2 className="auth-heading">Welcome Back</h2>
+        <h2 className="auth-heading">Welcome back</h2>
         <p className="auth-sub">Sign in with your intern credentials</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group" style={{ marginBottom: 16 }}>

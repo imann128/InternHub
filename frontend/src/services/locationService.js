@@ -5,8 +5,8 @@ const locationService = {
   getOne: (id) => api.get(`/locations/${id}`),
   create: (data) => api.post('/locations', data),
   update: (id, data) => api.put(`/locations/${id}`, data),
-  deactivate: (id) => api.patch(`/locations/${id}/deactivate`),
-  activate: (id) => api.patch(`/locations/${id}/activate`),
+  deactivate: (id, version) => api.patch(`/locations/${id}/deactivate`, { version }),
+  activate: (id, version) => api.patch(`/locations/${id}/activate`, { version }),
   assignInterns: (id, internIds) => api.put(`/locations/${id}/interns`, { intern_ids: internIds }),
 };
 

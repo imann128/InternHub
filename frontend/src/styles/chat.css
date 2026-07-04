@@ -1,56 +1,61 @@
-.chat-page { display: flex; height: calc(100vh - 60px); overflow: hidden; }
+/* Fills the page-content pane exactly (that pane is already sized to
+   "viewport minus navbar minus canvas padding" by the shell layout) —
+   using a raw 100vh calc here double-counted the canvas padding and made
+   the chat page taller than the screen. Negative margins bleed back out
+   to page-content's own padding edges since chat needs edge-to-edge
+   columns, not the page's usual 32px side padding. */
+.chat-page { display: flex; height: 100%; overflow: hidden; margin: 0 -32px -20px; }
 
 .chat-sidebar {
-  width: 280px;
+  width: 250px;
   border-right: 1px solid var(--border);
-  background: var(--card);
+  background: #EDE8D6;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
 }
 
-.chat-sidebar-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text);
-}
+[data-theme="dark"] .chat-sidebar { background: #29271C; }
 
 .chat-sidebar-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 99px;
+  padding: 4px;
+  margin: 16px;
 }
 
 .chat-tab {
   flex: 1;
-  padding: 10px;
+  padding: 9px;
   border: none;
+  border-radius: 99px;
   background: none;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--muted-strong);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all 0.15s;
+  font-family: inherit;
 }
 
 .chat-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
 }
 
-.chat-list { flex: 1; overflow-y: auto; }
+.chat-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
 
 .chat-list-item {
-  padding: 12px 16px;
+  padding: 12px;
+  border-radius: 14px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
   transition: background 0.15s;
 }
 
-.chat-list-item:hover { background: var(--bg); }
-.chat-list-item.active { background: var(--primary-light); }
+.chat-list-item:hover { background: rgba(255,255,255,0.5); }
+.chat-list-item.active { background: var(--bg-inset); }
 
 .chat-list-name {
   font-size: 13px;
@@ -60,7 +65,7 @@
 }
 
 .chat-list-preview {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -72,25 +77,35 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg);
 }
 
 .chat-main-header {
-  padding: 16px 20px;
+  padding: 20px 28px;
   border-bottom: 1px solid var(--border);
-  background: var(--card);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 28px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--bg);
+  background:
+    repeating-linear-gradient(0deg, rgba(122,124,74,0.16) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(122,124,74,0.16) 0 1px, transparent 1px 44px),
+    #F7F2E4;
+}
+
+[data-theme="dark"] .chat-messages {
+  background:
+    repeating-linear-gradient(0deg, rgba(122,124,74,0.12) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(122,124,74,0.12) 0 1px, transparent 1px 44px),
+    #26241A;
 }
 
 .chat-bubble-wrap {
@@ -98,36 +113,41 @@
   flex-direction: column;
 }
 
-.chat-bubble-wrap.admin { align-items: flex-end; }
-.chat-bubble-wrap.intern { align-items: flex-start; }
+/* "me"/"them" are relative to whoever is viewing the chat, not a fixed
+   role — the admin's own messages go on the right on the admin's screen,
+   but the SAME message (sent by the admin) needs to appear on the LEFT
+   when an intern views it, since it's not their message. Reusing raw
+   sender_role ('admin'/'intern') as the alignment class broke this: it
+   hardcoded "admin = right" regardless of who was looking at the screen. */
+.chat-bubble-wrap.me { align-items: flex-end; }
+.chat-bubble-wrap.them { align-items: flex-start; }
 .chat-bubble-wrap.announcement { align-items: center; }
 
 .chat-bubble {
   max-width: 65%;
-  padding: 10px 14px;
+  padding: 11px 16px;
   border-radius: 16px;
   font-size: 13px;
   line-height: 1.5;
   word-break: break-word;
 }
 
-.chat-bubble.admin {
+.chat-bubble.me {
   background: var(--primary);
   color: #fff;
-  border-bottom-right-radius: 4px;
 }
 
-.chat-bubble.intern {
-  background: var(--card);
+.chat-bubble.them {
+  background: var(--bg-panel);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
 }
 
 .chat-bubble.announcement {
-  background: #FEF9C3;
-  color: #854D0E;
-  border: 1px solid #FDE047;
+  background: var(--warning-light);
+  /* Message body text — needs to read as normal body copy, not a muted
+     accent color, so it uses --text (high contrast) rather than --warning
+     (which is ~1.8:1 against --warning-light and fails WCAG AA for text). */
+  color: var(--text);
   border-radius: 12px;
   text-align: center;
   max-width: 80%;
@@ -151,15 +171,14 @@
   color: inherit;
   font-size: 12px;
   margin-top: 4px;
-  border: 1px solid rgba(255,255,255,0.2);
 }
+
+.chat-bubble.them .chat-file-link { background: rgba(22,35,47,0.06); }
 
 .chat-file-link:hover { opacity: 0.8; }
 
 .chat-input-area {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--card);
+  padding: 16px 28px 24px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -168,28 +187,34 @@
 .chat-input-row {
   display: flex;
   gap: 10px;
-  align-items: flex-end;
+  align-items: center;
+}
+
+.chat-input-pill {
+  flex: 1;
+  background: var(--bg-panel);
+  border-radius: 99px;
+  padding: 4px 4px 4px 18px;
+  display: flex;
+  align-items: center;
 }
 
 .chat-input {
   flex: 1;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  font-size: 13px;
+  padding: 7px 0;
+  border: none;
   outline: none;
   resize: none;
   max-height: 120px;
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   font-family: var(--font);
+  font-size: 13px;
 }
 
-.chat-input:focus { border-color: var(--primary); }
-
 .chat-send-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--primary);
   border: none;
@@ -206,12 +231,30 @@
 .chat-send-btn:hover { opacity: 0.85; }
 .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.chat-announce-btn {
+  background: var(--warning);
+  color: #fff;
+  border: none;
+  border-radius: 99px;
+  padding: 12px 22px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.chat-announce-btn:hover { opacity: 0.9; }
+.chat-announce-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .chat-file-btn {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--card);
+  border: none;
   color: var(--muted);
   font-size: 16px;
   cursor: pointer;
@@ -221,7 +264,7 @@
   flex-shrink: 0;
 }
 
-.chat-file-btn:hover { border-color: var(--primary); color: var(--primary); }
+.chat-file-btn:hover { color: var(--primary); }
 
 .chat-file-preview {
   display: flex;
@@ -244,17 +287,4 @@
   gap: 8px;
 }
 
-.chat-empty-icon { font-size: 40px; opacity: 0.3; }
-
-.announce-btn {
-  background: #FEF9C3;
-  color: #854D0E;
-  border: 1px solid #FDE047;
-  border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.announce-btn:hover { background: #FDE047; }
+.chat-empty-icon { display: flex; opacity: 0.5; }

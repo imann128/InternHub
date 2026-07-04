@@ -10,6 +10,17 @@ const taskValidator = [
   body('priority').optional().isIn(['low', 'medium', 'high']).withMessage('Invalid priority'),
 ];
 
+// Edit never sends intern_id/intern_ids — TaskModel.update() doesn't accept
+// them (reassigning a task to a different intern isn't part of "edit").
+// Reusing taskValidator on the edit route was a bug: every edit would fail
+// validation with "At least one intern required" since neither field is
+// ever present in that route's payload.
+const taskEditValidator = [
+  body('title').trim().notEmpty().withMessage('Title is required'),
+  body('due_date').optional().isDate().withMessage('Invalid due date'),
+  body('priority').optional().isIn(['low', 'medium', 'high']).withMessage('Invalid priority'),
+];
+
 const taskStatusValidator = [
   body('status')
     .notEmpty()
@@ -19,4 +30,4 @@ const taskStatusValidator = [
   body('priority').optional().isIn(['low', 'medium', 'high']).withMessage('Invalid priority'),
 ];
 
-module.exports = { taskValidator, taskStatusValidator };
+module.exports = { taskValidator, taskEditValidator, taskStatusValidator };

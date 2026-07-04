@@ -53,8 +53,8 @@ const Login = () => {
     <div className="auth-page">
       <div className={`auth-card slide-up ${shake ? 'shake' : ''}`}>
         <div className="auth-brand">
-          <div className="auth-logo">IP</div>
-          <h1 className="auth-title">Intern Portal</h1>
+          <div className="auth-logo">IH</div>
+          <h1 className="auth-title">InternHub</h1>
         </div>
         <h2 className="auth-heading">Sign in</h2>
         <p className="auth-sub">Enter your admin credentials to continue</p>

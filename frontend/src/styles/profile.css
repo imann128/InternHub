@@ -1,56 +1,57 @@
-.profile-page { display: flex; flex-direction: column; gap: 16px; }
+.profile-page { display: flex; flex-direction: column; gap: 20px; }
+
+.btn-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: fit-content;
+}
+
+.btn-back-link:hover { text-decoration: underline; }
 
 .profile-header {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
   flex-wrap: wrap;
-  position: relative;
+  background: var(--bg-panel);
+  border-radius: var(--radius);
+  padding: 24px;
 }
-
-.btn-back {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 13px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn-back:hover { color: var(--text); border-color: var(--text); }
 
 .profile-avatar {
   width: 64px;
   height: 64px;
-  background: var(--primary-light);
-  color: var(--primary);
+  background: var(--gradient-brand);
+  color: #fff;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
 .profile-name {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 600;
   color: var(--text);
-  margin: 0 0 4px;
-  letter-spacing: -0.4px;
+  margin: 0 0 2px;
 }
 
-.profile-email { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+.profile-email { font-size: 12.5px; color: var(--muted); margin: 0; }
 
-.profile-meta { display: flex; align-items: center; gap: 10px; }
+.profile-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 
-.profile-date { font-size: 13px; color: var(--muted); }
+.profile-date { font-size: 11.5px; color: var(--muted); }
 
 .profile-stats {
   display: grid;
@@ -58,22 +59,31 @@
   gap: 16px;
 }
 
-.profile-stat-card { text-align: center; padding: 20px; }
+.profile-stat-card {
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
 
 .pstat-value {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: -1px;
   color: var(--text);
   margin-bottom: 4px;
 }
 
-.pstat-label { font-size: 13px; color: var(--muted); font-weight: 500; }
+.pstat-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
 
 .profile-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 20px;
+  align-items: start;
+}
+
+.profile-panel {
+  background: var(--bg-panel);
+  border-radius: var(--radius);
+  padding: 20px;
 }
 
 .section-title {
@@ -83,7 +93,8 @@
   margin-bottom: 16px;
 }
 
-.progress-section { margin-bottom: 16px; }
+.progress-section { margin-bottom: 14px; }
+.progress-section:last-child { margin-bottom: 0; }
 
 .progress-header {
   display: flex;
@@ -91,41 +102,32 @@
   margin-bottom: 6px;
 }
 
-.progress-name { font-size: 13px; color: var(--muted); }
-.progress-pct { font-size: 13px; font-weight: 600; color: var(--text); }
+.progress-name { font-size: 12.5px; color: var(--muted-strong); }
+.progress-pct { font-size: 12.5px; font-weight: 600; color: var(--text); }
 
-.attendance-list { display: flex; flex-direction: column; gap: 10px; }
+.attendance-list { display: flex; flex-direction: column; gap: 8px; }
 
 .attendance-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+  background: var(--bg-inset);
+  border-radius: 14px;
+  padding: 10px 14px;
 }
 
-.attendance-item:last-child { border-bottom: none; }
+.attendance-date { font-size: 12.5px; color: var(--text); font-weight: 600; }
 
-.attendance-date { font-size: 13px; color: var(--text); font-weight: 500; }
-
-.attendance-right { display: flex; align-items: center; gap: 6px; }
+.attendance-right { display: flex; align-items: center; gap: 8px; }
 
 .time-chip {
   font-size: 11px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 2px 8px;
   color: var(--muted);
 }
 
 .hours-chip {
   font-size: 11px;
-  background: var(--primary-light);
-  color: var(--primary);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-weight: 600;
+  color: var(--muted);
 }
 
 @media (max-width: 1024px) {

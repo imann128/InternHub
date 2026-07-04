@@ -1,18 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import internPortalService from '../../services/internPortalService';
+import InternLayout from '../../components/intern/InternLayout';
 import Loader from '../../components/common/Loader';
 import { toast } from 'react-toastify';
-import { InternNavbar } from './InternDashboard';
 import useCamera from '../../hooks/useCamera';
 import { loadFaceModels, getFaceDescriptor } from '../../utils/faceApi';
 import getCurrentLocation from '../../hooks/useGeolocation';
 
 const InternAttendance = () => {
-  const { intern, logout } = useAuth();
-  const navigate = useNavigate();
+  const { intern } = useAuth();
   const [attendance, setAttendance] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,11 +33,6 @@ const InternAttendance = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', saved);
-  }, []);
 
   useEffect(() => {
     loadFaceModels().catch(() => { });
@@ -108,23 +102,22 @@ const InternAttendance = () => {
   };
 
   return (
-    <div className="intern-page">
-      <InternNavbar name={intern?.name} onLogout={() => { logout(); navigate('/intern/login'); }} navigate={navigate} />
-
-      <div className="intern-content" style={{ maxWidth: 900 }}>
-        <h2 style={{ color: 'var(--text)', marginBottom: 16 }}>My Attendance</h2>
-
+    <InternLayout title="My attendance" intern={intern}>
+      <div className="page-stack">
+        <Link to="/intern/mobile-checkin" style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 600, color: 'var(--primary-dark)', textDecoration: 'none' }}>
+          📱 Open mobile check-in view
+        </Link>
         {profile && (
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>
+          <p style={{ color: 'var(--muted)', fontSize: 13 }}>
             {profile.location_id
               ? (profile.location_active
                   ? <>Check-in location: <strong style={{ color: 'var(--text)' }}>{profile.location_name}</strong></>
-                  : <span style={{ color: '#DC2626' }}>Your assigned location ({profile.location_name}) is no longer active — contact your admin.</span>)
-              : <span style={{ color: '#DC2626' }}>No check-in location assigned yet — contact your admin before checking in.</span>}
+                  : <span style={{ color: 'var(--danger)' }}>Your assigned location ({profile.location_name}) is no longer active — contact your admin.</span>)
+              : <span style={{ color: 'var(--danger)' }}>No check-in location assigned yet — contact your admin before checking in.</span>}
           </p>
         )}
 
-        <div className="intern-card" style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div className="intern-panel" style={{ background: 'var(--bg-panel)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <p style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 4 }}>Today — {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
             <p style={{ color: 'var(--muted)', fontSize: 13 }}>
@@ -175,8 +168,8 @@ const InternAttendance = () => {
         {loading ? <Loader /> : attendance.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 48 }}>No attendance records yet</div>
         ) : (
-          <div className="intern-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="intern-table">
+          <div className="interns-table-wrap">
+            <table className="interns-table">
               <thead>
                 <tr>
                   {['Date', 'Status', 'Check In', 'Check Out', 'Hours', 'Source'].map(h => <th key={h}>{h}</th>)}
@@ -189,8 +182,8 @@ const InternAttendance = () => {
                     <td>
                       <span style={{
                         padding: '4px 10px', borderRadius: 99, fontSize: 12, fontWeight: 500,
-                        background: rec.status === 'present' ? '#DCFCE7' : '#FEE2E2',
-                        color: rec.status === 'present' ? '#16A34A' : '#DC2626'
+                        background: rec.status === 'present' ? 'var(--accent-teal-light)' : 'var(--danger-light)',
+                        color: rec.status === 'present' ? 'var(--accent-teal)' : 'var(--danger)'
                       }}>
                         {rec.status}
                       </span>
@@ -206,7 +199,7 @@ const InternAttendance = () => {
           </div>
         )}
       </div>
-    </div>
+    </InternLayout>
   );
 };
 

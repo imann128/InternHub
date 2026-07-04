@@ -1,0 +1,84 @@
+.consent-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 30, 50, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.consent-box {
+  width: 100%;
+  max-width: 520px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: var(--shadow-canvas);
+}
+
+.consent-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 10px;
+}
+
+.consent-intro {
+  font-size: 13.5px;
+  color: var(--muted-strong);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.consent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.consent-list li {
+  background: var(--bg-inset);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--muted-strong);
+  line-height: 1.55;
+}
+
+.consent-list li strong {
+  color: var(--text);
+}
+
+.consent-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 18px;
+}
+
+.consent-checkbox-row input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.consent-accept-btn {
+  width: 100%;
+  padding: 12px 22px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+}

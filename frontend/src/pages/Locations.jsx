@@ -80,10 +80,10 @@ const Locations = () => {
   const handleToggleActive = async (location) => {
     try {
       if (location.is_active) {
-        await locationService.deactivate(location.id);
+        await locationService.deactivate(location.id, location.version);
         toast.success(`${location.name} deactivated`);
       } else {
-        await locationService.activate(location.id);
+        await locationService.activate(location.id, location.version);
         toast.success(`${location.name} reactivated`);
       }
       fetchLocations();
@@ -93,60 +93,59 @@ const Locations = () => {
   };
 
   return (
-    <MainLayout title="Locations">
-      <div className="page-header">
-        <p className="text-muted" style={{ margin: 0 }}>
-          Interns can only check in/out within the radius of the location they're assigned to.
-        </p>
-        <button className="btn-primary" onClick={openAdd}>+ Add Location</button>
+    <MainLayout
+      title="Locations"
+      subtitle="Interns can only check in/out within the radius of their assigned location."
+      action={<button className="btn-pill-primary" onClick={openAdd}>+ Add location</button>}
+    >
+      <div className="page-stack">
+        {loading ? <Loader /> : locations.length === 0 ? (
+          <EmptyState message="No locations set up yet" />
+        ) : (
+          <div className="interns-table-wrap">
+            <table className="interns-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Coordinates</th>
+                  <th>Radius</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locations.map(location => (
+                  <tr key={location.id}>
+                    <td><span className="intern-name">{location.name}</span></td>
+                    <td>{Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)}</td>
+                    <td>{location.radius_meters}m</td>
+                    <td>
+                      <span className={`badge ${location.is_active ? 'badge-success' : 'badge-danger'}`}>
+                        {location.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="action-btns">
+                        <button className="row-btn row-btn-edit" onClick={() => openEdit(location)}>Edit</button>
+                        <button className="row-btn row-btn-view" onClick={() => openManageInterns(location)}>Manage interns</button>
+                        <button
+                          className={`row-btn ${location.is_active ? 'row-btn-deactivate' : 'row-btn-activate'}`}
+                          onClick={() => handleToggleActive(location)}
+                        >
+                          {location.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {loading ? <Loader /> : locations.length === 0 ? (
-        <EmptyState message="No locations set up yet" />
-      ) : (
-        <div className="card table-card">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Coordinates</th>
-                <th>Radius</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map(location => (
-                <tr key={location.id}>
-                  <td><span className="intern-name">{location.name}</span></td>
-                  <td><span className="text-muted">{Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)}</span></td>
-                  <td><span className="text-muted">{location.radius_meters}m</span></td>
-                  <td>
-                    <span className={`badge ${location.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {location.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      <button className="btn-edit" onClick={() => openEdit(location)}>Edit</button>
-                      <button className="btn-view" onClick={() => openManageInterns(location)}>Manage Interns</button>
-                      <button
-                        className={location.is_active ? 'btn-delete' : 'btn-edit'}
-                        onClick={() => handleToggleActive(location)}
-                      >
-                        {location.is_active ? 'Deactivate' : 'Reactivate'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {showModal && (
-        <Modal title={selected ? 'Edit Location' : 'Add Location'} onClose={closeModal}>
+        <Modal title={selected ? 'Edit location' : 'Add location'} onClose={closeModal}>
           <LocationForm
             initial={selected}
             onSubmit={handleSubmit}
@@ -157,7 +156,7 @@ const Locations = () => {
       )}
 
       {manageLocation && (
-        <Modal title={`Manage Interns — ${manageLocation.name}`} onClose={closeManageInterns}>
+        <Modal title={`Manage interns — ${manageLocation.name}`} onClose={closeManageInterns}>
           <AssignInternsPanel
             location={manageLocation}
             allInterns={interns}

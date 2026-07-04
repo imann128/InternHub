@@ -21,3 +21,11 @@ yarn-error.log*
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# Backups
+interns_portal_backup_.dump
+
+# Contains real, live Postgres passwords (interns_owner/interns_app) hardcoded
+# in plaintext — same secret-handling rules as .env. Commit
+# roles.sql.example instead (placeholders only).
+backend/src/config/roles.sql

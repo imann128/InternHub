@@ -1,28 +1,57 @@
 :root {
-  --primary: #4F46E5;
-  --primary-light: #EEF2FF;
-  --success: #22C55E;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --bg: #F8FAFC;
+  --primary: #2C7BD6;
+  --primary-dark: #1F5FA8;
+  --primary-light: #D8E9FA;
+  --accent-teal: #1FA6A0;
+  --accent-teal-light: #D9F3EF;
+  --accent-purple: #8B7FD1;
+  --accent-purple-light: #E9E4F5;
+  --success: #1FA6A0;
+  --warning: #D6A419;
+  --warning-light: #FDF0C9;
+  /* --warning (#D6A419) on --warning-light (#FDF0C9) is ~1.8:1 contrast —
+     fine for a small badge/dot accent, but fails WCAG AA for any real text
+     (announcement bubbles, warning labels). This darker shade keeps the
+     same amber hue but is legible as body text on that light background. */
+  --warning-dark: #8A5A0A;
+  --danger: #C0503F;
+  --danger-light: #F8DEDA;
+  --bg: #F4F7FA;
+  --bg-panel: #E6EEF4;
+  --bg-inset: #FBFDFE;
   --card: #FFFFFF;
-  --text: #0F172A;
-  --muted: #64748B;
-  --border: #E2E8F0;
-  --radius: 16px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --text: #16232F;
+  --muted: #64798C;
+  --muted-strong: #41586B;
+  --border: #DCE6EC;
+  --radius: 20px;
+  --radius-sm: 12px;
+  --radius-lg: 28px;
+  --shadow: 0 1px 3px rgba(8,30,50,0.06), 0 1px 2px rgba(8,30,50,0.04);
+  --shadow-md: 0 8px 20px rgba(8,30,50,0.08), 0 2px 6px rgba(8,30,50,0.05);
+  --shadow-canvas: 0 30px 60px rgba(8,30,50,0.35);
+  --gradient-canvas: radial-gradient(1100px 750px at 12% -10%, #3E93D6 0%, transparent 60%),
+    radial-gradient(900px 650px at 100% 105%, #1FA6A0 0%, transparent 55%),
+    linear-gradient(160deg, #0E2C4A 0%, #17466E 55%, #1E5A85 100%);
+  --gradient-brand: linear-gradient(135deg, #2C7BD6, #1FA6A0);
+  --font: 'Google Sans Code', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 [data-theme="dark"] {
-  --bg: #0F172A;
-  --card: #1E293B;
-  --text: #F1F5F9;
-  --muted: #94A3B8;
-  --border: #334155;
-  --primary-light: #1E1B4B;
+  --bg: #0E1A26;
+  --bg-panel: #16232F;
+  --bg-inset: #1B2A38;
+  --card: #16232F;
+  --text: #F4F7FA;
+  --muted: #8FA3B5;
+  --muted-strong: #B7C6D3;
+  --border: #2A3B49;
+  --primary-light: #123353;
+  --accent-teal-light: #0F332F;
+  --accent-purple-light: #2A2440;
+  --warning-light: #3A2E0D;
+  --warning-dark: #E8C158;
+  --danger-light: #3A1712;
   --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
   --shadow-md: 0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
 }

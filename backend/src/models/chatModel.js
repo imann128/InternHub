@@ -1,24 +1,47 @@
 const pool = require('../config/db');
+const { parsePagination, buildMeta } = require('../utils/pagination');
 
 const ChatModel = {
-  getMessages: async (organizationId, intern_id) => {
+  // Returns the most recent `limit` messages (page 1 = most recent),
+  // re-sorted back to chronological order for display -- opening a
+  // conversation with months of history no longer means loading every
+  // message that was ever sent in it.
+  getMessages: async (organizationId, intern_id, { page, limit } = {}) => {
+    const { page: pageNum, limit: limitNum, offset } = parsePagination({ page, limit }, { defaultLimit: 50, maxLimit: 200 });
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM chat_messages WHERE organization_id = $1 AND (intern_id = $2 OR is_announcement = TRUE)`,
+      [organizationId, intern_id]
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
     const result = await pool.query(
       `SELECT * FROM chat_messages 
        WHERE organization_id = $1 AND (intern_id = $2 OR is_announcement = TRUE)
-       ORDER BY created_at ASC`,
-      [organizationId, intern_id]
+       ORDER BY created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [organizationId, intern_id, limitNum, offset]
     );
-    return result.rows;
+    return { rows: result.rows.reverse(), pagination: buildMeta(total, pageNum, limitNum) };
   },
 
-  getAnnouncements: async (organizationId) => {
+  getAnnouncements: async (organizationId, { page, limit } = {}) => {
+    const { page: pageNum, limit: limitNum, offset } = parsePagination({ page, limit }, { defaultLimit: 50, maxLimit: 200 });
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM chat_messages WHERE organization_id = $1 AND is_announcement = TRUE`,
+      [organizationId]
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
     const result = await pool.query(
       `SELECT * FROM chat_messages 
        WHERE organization_id = $1 AND is_announcement = TRUE
-       ORDER BY created_at DESC`,
-      [organizationId]
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [organizationId, limitNum, offset]
     );
-    return result.rows;
+    return { rows: result.rows, pagination: buildMeta(total, pageNum, limitNum) };
   },
 
   getAllConversations: async (organizationId) => {
@@ -33,7 +56,7 @@ const ChatModel = {
         cm.file_name
       FROM interns i
       LEFT JOIN chat_messages cm ON cm.intern_id = i.id AND cm.is_announcement = FALSE AND cm.organization_id = $1
-      WHERE i.organization_id = $1
+      WHERE i.organization_id = $1 AND i.deleted_at IS NULL
       ORDER BY i.id, cm.created_at DESC
     `, [organizationId]);
     return result.rows;

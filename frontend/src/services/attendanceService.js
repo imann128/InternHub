@@ -10,10 +10,12 @@ const attendanceService = {
     const query = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v))
     ).toString();
-    const token = localStorage.getItem('token');
     const url = `${process.env.REACT_APP_API_URL}/attendance/export?${query}`;
 
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    // GET request — no CSRF header needed, but credentials must be
+    // explicitly opted into on a raw fetch() the same way axios needs
+    // withCredentials, or the auth cookie won't be attached.
+    fetch(url, { credentials: 'include' })
       .then(res => res.blob())
       .then(blob => {
         const a = document.createElement('a');

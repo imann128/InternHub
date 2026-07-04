@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
+const { isJtiBlacklisted } = require('../services/sessionService');
 
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
+// Access token now arrives as an HttpOnly cookie, not an Authorization
+// header — the frontend never has the raw token in JS-readable storage.
+// There is no header fallback — cookie is the only accepted source.
+const authMiddleware = async (req, res, next) => {
+  const token = req.cookies?.access_token;
   if (!token) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
@@ -13,6 +17,10 @@ const authMiddleware = (req, res, next) => {
     // explicit rather than rely on that).
     if (!decoded.organization_id) {
       return res.status(401).json({ success: false, message: 'Session expired, please log in again' });
+    }
+
+    if (decoded.jti && (await isJtiBlacklisted(decoded.jti))) {
+      return res.status(401).json({ success: false, message: 'Session has been logged out' });
     }
 
     req.user = decoded;

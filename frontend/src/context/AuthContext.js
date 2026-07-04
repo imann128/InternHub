@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import authService from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -8,43 +8,44 @@ export const AuthProvider = ({ children }) => {
   const [intern, setIntern] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // The access token is an HttpOnly cookie now — the frontend has no way to
+  // read it directly, so on every fresh load (or hard refresh) it asks the
+  // backend who, if anyone, the current cookies belong to.
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedAdmin = localStorage.getItem('admin');
-    const storedIntern = localStorage.getItem('intern');
-    if (token) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      if (storedAdmin) setAdmin(JSON.parse(storedAdmin));
-      if (storedIntern) setIntern(JSON.parse(storedIntern));
-    }
-    setLoading(false);
+    authService.me()
+      .then((res) => {
+        const { role, admin: adminData, intern: internData } = res.data.data;
+        if (role === 'admin') setAdmin(adminData);
+        if (role === 'intern') setIntern(internData);
+      })
+      .catch(() => {
+        setAdmin(null);
+        setIntern(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = (data) => {
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('admin', JSON.stringify(data.admin));
-    api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
     setAdmin(data.admin);
+    setIntern(null);
   };
 
   const internLogin = (data) => {
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('intern', JSON.stringify(data.intern));
-    api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
     setIntern(data.intern);
+    setAdmin(null);
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('admin');
-    localStorage.removeItem('intern');
-    delete api.defaults.headers.common['Authorization'];
+    // Best-effort: revoke the session server-side, but don't block clearing
+    // local state on it — the user should end up logged out client-side
+    // even if this call fails (network blip, already-expired session, etc).
+    authService.logout().catch(() => {});
     setAdmin(null);
     setIntern(null);
   };
 
   return (
-    <AuthContext.Provider value={{ admin, intern, login, internLogin, logout, loading }}>
+    <AuthContext.Provider value={{ admin, intern, login, internLogin, logout, loading, setIntern }}>
       {children}
     </AuthContext.Provider>
   );

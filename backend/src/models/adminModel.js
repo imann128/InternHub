@@ -43,6 +43,14 @@ const AdminModel = {
         );
         return result.rows;
     },
+
+    getById: async (organizationId, id) => {
+        const result = await pool.query(
+            'SELECT id, name, email, organization_id, created_at FROM admins WHERE id = $1 AND organization_id = $2',
+            [id, organizationId]
+        );
+        return result.rows[0];
+    },
 };
 
 module.exports = AdminModel;

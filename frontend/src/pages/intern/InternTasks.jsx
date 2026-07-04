@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import InternLayout from '../../components/intern/InternLayout';
 import Loader from '../../components/common/Loader';
 import { toast } from 'react-toastify';
 import submissionService from '../../services/submissionService';
 
-const priorityColor = { high: '#EF4444', medium: '#F59E0B', low: '#22C55E' };
+const priorityColor = { high: 'var(--primary-dark)', medium: 'var(--accent-purple)', low: 'var(--accent-teal)' };
+const statusColor = { completed: { bg: 'var(--accent-teal-light)', text: 'var(--accent-teal)' }, pending: { bg: 'var(--warning-light)', text: 'var(--warning)' } };
+const submissionStatusColor = { approved: 'var(--accent-teal)', rejected: 'var(--danger)', revision_requested: 'var(--accent-purple)', pending: 'var(--warning)' };
 
 const InternTasks = () => {
-  const { intern, logout } = useAuth();
-  const navigate = useNavigate();
+  const { intern } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const [submitTask, setSubmitTask] = useState(null);
   const [submitNotes, setSubmitNotes] = useState('');
   const [submitFiles, setSubmitFiles] = useState([]);
@@ -34,18 +34,6 @@ const InternTasks = () => {
   };
 
   useEffect(() => { fetchTasks(); }, []);
-
-  const toggleDark = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
-    localStorage.setItem('theme', next ? 'dark' : 'light');
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', saved);
-  }, []);
 
   const handleComplete = async (id) => {
     try {
@@ -90,31 +78,8 @@ const InternTasks = () => {
   };
 
   return (
-    <div className="intern-page">
-      {/* Navbar */}
-      <div className="intern-navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: 18 }}>IP</span>
-          <nav style={{ display: 'flex', gap: 4 }}>
-            {[['Dashboard', '/intern/dashboard'], ['Tasks', '/intern/tasks'], ['Attendance', '/intern/attendance']].map(([label, path]) => (
-              <button key={path} onClick={() => navigate(path)}
-                className={`intern-nav-btn ${window.location.pathname === path ? 'active' : ''}`}>
-                {label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={toggleDark} style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {dark ? '☀️' : '🌙'}
-          </button>
-          <span style={{ color: 'var(--muted)', fontSize: 14 }}>{intern?.name}</span>
-          <button onClick={() => { logout(); navigate('/intern/login'); }} className="btn-ghost" style={{ padding: '5px 12px', fontSize: 13 }}>Logout</button>
-        </div>
-      </div>
-
-      <div className="intern-content" style={{ maxWidth: 900 }}>
-        <h2 style={{ color: 'var(--text)', marginBottom: 24 }}>My Tasks</h2>
+    <InternLayout title="My tasks" subtitle={`${tasks.length} assigned`} intern={intern}>
+      <div className="page-stack">
         {loading ? <Loader /> : tasks.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 48 }}>No tasks assigned yet</div>
         ) : (
@@ -123,7 +88,8 @@ const InternTasks = () => {
               const pendingTasks = tasks.filter(t => t.status !== 'completed');
               const completedTasks = tasks.filter(t => t.status === 'completed');
               const renderTask = (task) => (
-                <div key={task.id} className="intern-task-card" style={{
+                <div key={task.id} className="intern-panel intern-task-card" style={{
+                background: 'var(--bg-panel)',
                 borderLeft: `4px solid ${priorityColor[task.priority] || 'var(--border)'}`,
                 opacity: task.status === 'completed' ? 0.7 : 1,
               }}>
@@ -135,7 +101,7 @@ const InternTasks = () => {
                     {task.description && <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>{task.description}</div>}
                     <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                       {task.due_date && (
-                        <span style={{ fontSize: 12, color: new Date(task.due_date) < new Date() && task.status === 'pending' ? '#EF4444' : 'var(--muted)' }}>
+                        <span style={{ fontSize: 12, color: new Date(task.due_date) < new Date() && task.status === 'pending' ? 'var(--danger)' : 'var(--muted)' }}>
                           Due: {new Date(task.due_date).toLocaleDateString()}
                           {new Date(task.due_date) < new Date() && task.status === 'pending' && ' ⚠'}
                         </span>
@@ -167,7 +133,7 @@ const InternTasks = () => {
                           Submissions ({submissions[task.id].length})
                         </div>
                         {submissions[task.id].map(s => (
-                          <div key={s.id} style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 12px', marginBottom: 6, borderLeft: `3px solid ${s.status === 'approved' ? '#22C55E' : s.status === 'rejected' ? '#EF4444' : '#F59E0B'}` }}>
+                          <div key={s.id} style={{ background: 'var(--bg-inset)', borderRadius: 6, padding: '8px 12px', marginBottom: 6, borderLeft: `3px solid ${submissionStatusColor[s.status] || 'var(--border)'}` }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', textTransform: 'capitalize' }}>{s.status.replace('_', ' ')}</span>
                               {s.score != null && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Score: {s.score}/100</span>}
@@ -183,8 +149,8 @@ const InternTasks = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 12 }}>
                     <span style={{
                       padding: '4px 10px', borderRadius: 99, fontSize: 12, fontWeight: 500,
-                      background: task.status === 'completed' ? '#DCFCE7' : '#FEF9C3',
-                      color: task.status === 'completed' ? '#16A34A' : '#CA8A04'
+                      background: statusColor[task.status]?.bg || 'var(--warning-light)',
+                      color: statusColor[task.status]?.text || 'var(--warning)'
                     }}>
                       {task.status}
                     </span>
@@ -298,7 +264,7 @@ const InternTasks = () => {
           </div>
         </div>
       )}
-    </div>
+    </InternLayout>
   );
 };
 

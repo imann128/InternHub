@@ -5,6 +5,7 @@ import InternForm from '../components/forms/InternForm';
 import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
 import EmptyState from '../components/common/EmptyState';
+import Pagination from '../components/common/Pagination';
 import internService from '../services/internService';
 import locationService from '../services/locationService';
 import { toast } from 'react-toastify';
@@ -34,6 +35,8 @@ const Interns = () => {
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [locations, setLocations] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
 
   useEffect(() => {
     locationService.getAll()
@@ -43,10 +46,19 @@ const Interns = () => {
 
   const fetchInterns = useCallback(() => {
     setLoading(true);
-    internService.getAll({ search, department, status: statusFilter })
-      .then(res => setInterns(res.data.data))
+    internService.getAll({ search, department, status: statusFilter, page, limit: 20 })
+      .then(res => {
+        setInterns(res.data.data);
+        setPagination(res.data.pagination || null);
+      })
       .catch(err => toast.error(err.message))
       .finally(() => setLoading(false));
+  }, [search, department, statusFilter, page]);
+
+  // Any filter change should reset back to page 1 — staying on page 5 of a
+  // now-different result set would just show an empty/wrong page.
+  useEffect(() => {
+    setPage(1);
   }, [search, department, statusFilter]);
 
   useEffect(() => {
@@ -97,89 +109,97 @@ const Interns = () => {
   };
 
   return (
-    <MainLayout title="Interns">
-      <div className="page-header">
+    <MainLayout
+      title="Interns"
+      subtitle={pagination ? `${interns.length} of ${pagination.total} interns` : `${interns.length} interns`}
+      action={<button className="btn-pill-primary" onClick={openAdd}>+ Add intern</button>}
+    >
+      <div className="page-stack">
         <div className="filters-row">
-          <input
-            className="search-input"
-            placeholder="Search by name..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <div className="search-input-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              className="search-input"
+              placeholder="Search by name…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
           <select
             className="filter-select"
             value={department}
             onChange={e => setDepartment(e.target.value)}
           >
-            <option value="">All Departments</option>
+            <option value="">All departments</option>
             {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
 
           <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-            <option value="">All Status</option>
+            <option value="">All status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-
         </div>
-        <button className="btn-primary" onClick={openAdd}>+ Add Intern</button>
+
+        {loading ? <Loader /> : interns.length === 0 ? (
+          <EmptyState message="No interns found" />
+        ) : (
+          <div className="interns-table-wrap">
+            <table className="interns-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Department</th>
+                  <th>Joining date</th>
+                  <th>Location</th>
+                  <th>Actions</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {interns.map(intern => (
+                  <tr key={intern.id}>
+                    <td><span className="intern-name">{intern.name}</span></td>
+                    <td>{intern.email}</td>
+                    <td><span className="badge badge-muted">{intern.department}</span></td>
+                    <td>{new Date(intern.joining_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                    <td>
+                      {intern.location_id
+                        ? locations.find(l => l.id === intern.location_id)?.name || 'Unknown'
+                        : '—'}
+                    </td>
+                    <td>
+                      <div className="action-btns">
+                        <button className="row-btn row-btn-view" onClick={() => navigate(`/interns/${intern.id}/profile`)}>View</button>
+                        <button className="row-btn row-btn-edit" onClick={() => openEdit(intern)}>Edit</button>
+                        <button
+                          className={`row-btn ${intern.status === 'active' ? 'row-btn-deactivate' : 'row-btn-activate'}`}
+                          onClick={() => handleToggleStatus(intern)}
+                        >
+                          {intern.status === 'active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button className="row-btn row-btn-delete" onClick={() => setDeleteId(intern.id)}>Delete</button>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${intern.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
+                        {intern.status || 'active'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination pagination={pagination} onPageChange={setPage} />
+          </div>
+        )}
       </div>
 
-      {loading ? <Loader /> : interns.length === 0 ? (
-        <EmptyState message="No interns found" />
-      ) : (
-        <div className="card table-card">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Department</th>
-                <th>Joining Date</th>
-                <th>Location</th>
-                <th>Actions</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {interns.map(intern => (
-                <tr key={intern.id}>
-                  <td><span className="intern-name">{intern.name}</span></td>
-                  <td><span className="text-muted">{intern.email}</span></td>
-                  <td><span className="badge badge-muted">{intern.department}</span></td>
-                  <td><span className="text-muted">{new Date(intern.joining_date).toLocaleDateString()}</span></td>
-                  <td>
-                    {intern.location_id
-                      ? <span className="badge badge-muted">{locations.find(l => l.id === intern.location_id)?.name || 'Unknown'}</span>
-                      : <span className="text-muted">—</span>}
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      <button className="btn-view" onClick={() => navigate(`/interns/${intern.id}/profile`)}>View</button>
-                      <button className="btn-edit" onClick={() => openEdit(intern)}>Edit</button>
-                      <button className="btn-delete" onClick={() => setDeleteId(intern.id)}>Delete</button>
-                      <button
-                        className={intern.status === 'active' ? 'btn-delete' : 'btn-edit'}
-                        onClick={() => handleToggleStatus(intern)}
-                      >
-                        {intern.status === 'active' ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`badge ${intern.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
-                      {intern.status || 'active'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {showModal && (
-        <Modal title={selected ? 'Edit Intern' : 'Add Intern'} onClose={closeModal}>
+        <Modal title={selected ? 'Edit intern' : 'Add intern'} onClose={closeModal}>
           <InternForm
             initial={selected}
             onSubmit={handleSubmit}
